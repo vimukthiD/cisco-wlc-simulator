@@ -7,20 +7,23 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"time"
+
+	"golang.org/x/term"
 )
 
 const (
-	dashURL   = "http://localhost:8080"
-	reset     = "\033[0m"
-	bold      = "\033[1m"
-	dim       = "\033[2m"
-	cyan      = "\033[36m"
-	green     = "\033[32m"
-	yellow    = "\033[33m"
-	blue      = "\033[34m"
-	red       = "\033[31m"
-	clearScr  = "\033[2J\033[H"
+	dashURL    = "http://localhost:8080"
+	reset      = "\033[0m"
+	bold       = "\033[1m"
+	dim        = "\033[2m"
+	cyan       = "\033[36m"
+	green      = "\033[32m"
+	yellow     = "\033[33m"
+	blue       = "\033[34m"
+	red        = "\033[31m"
+	clearScr   = "\033[2J\033[H"
 	hideCursor = "\033[?25l"
 	showCursor = "\033[?25h"
 )
@@ -62,15 +65,18 @@ type logEntry struct {
 	Status     int    `json:"status"`
 }
 
+var renderPaused atomic.Bool
+
 func main() {
 	fmt.Print(hideCursor)
 	defer fmt.Print(showCursor)
 
-	// Set up raw terminal for key input
 	go handleKeys()
 
 	for {
-		render()
+		if !renderPaused.Load() {
+			render()
+		}
 		time.Sleep(3 * time.Second)
 	}
 }
@@ -99,9 +105,13 @@ func render() {
 
 	// Network info
 	iface, ip := getNetworkInfo()
-	sb.WriteString(fmt.Sprintf("  %sNetwork%s Interface: %s%s%s  Host IP: %s%s%s\n",
-		bold, reset, cyan, iface, reset, cyan, ip, reset))
-	sb.WriteString(fmt.Sprintf("  %sDashboard%s %s%s%s\n", bold, reset, green, dashURL, reset))
+	bareIP := ip
+	if idx := strings.Index(bareIP, "/"); idx >= 0 {
+		bareIP = bareIP[:idx]
+	}
+	sb.WriteString(fmt.Sprintf("  %sNetwork%s Interface: %s%s%s  VM IP: %s%s%s\n",
+		bold, reset, cyan, iface, reset, green+bold, bareIP, reset))
+	sb.WriteString(fmt.Sprintf("  %sDashboard%s %shttp://%s:8080%s\n", bold, reset, cyan, bareIP, reset))
 	sb.WriteString("\n")
 
 	// Devices
@@ -159,38 +169,66 @@ func render() {
 			dim, ts, reset, typeColor, strings.ToUpper(l.Type), reset, l.DeviceHost, detail))
 	}
 
-	sb.WriteString(fmt.Sprintf("\n  %s[r] restart  [q] shell  [Ctrl+C] shutdown%s\n", dim, reset))
+	sb.WriteString(fmt.Sprintf("\n  %s[r] reboot  [s] shutdown  [q] shell%s\n", dim, reset))
 
-	fmt.Print(sb.String())
+	// Raw terminal mode disables \n → \r\n translation, so add \r explicitly
+	fmt.Print(strings.ReplaceAll(sb.String(), "\n", "\r\n"))
 }
 
 func handleKeys() {
-	// Set terminal to raw mode
-	exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1", "-echo").Run()
-	// Fallback for macOS
-	exec.Command("stty", "-f", "/dev/tty", "cbreak", "min", "1", "-echo").Run()
+	fd := int(os.Stdin.Fd())
+
+	// Put terminal in raw mode using Go's term package (reliable under inittab)
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		// If stdin isn't a terminal, try opening /dev/tty directly
+		tty, ttyErr := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+		if ttyErr != nil {
+			return
+		}
+		defer tty.Close()
+		fd = int(tty.Fd())
+		oldState, err = term.MakeRaw(fd)
+		if err != nil {
+			return
+		}
+	}
+	_ = oldState // kept for restore
 
 	buf := make([]byte, 1)
 	for {
-		n, err := os.Stdin.Read(buf)
+		n, err := os.NewFile(uintptr(fd), "tty").Read(buf)
 		if err != nil || n == 0 {
+			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		switch buf[0] {
 		case 'q':
-			fmt.Print(showCursor)
-			// Restore terminal
-			exec.Command("stty", "-f", "/dev/tty", "sane").Run()
-			exec.Command("stty", "-F", "/dev/tty", "sane").Run()
-			fmt.Println("\nDropped to shell. Type 'exit' to return to console.")
+			// Drop to shell
+			renderPaused.Store(true)
+			term.Restore(fd, oldState)
+			fmt.Print(showCursor + clearScr)
+			fmt.Println("Dropped to shell. Type 'exit' to return to console.\r")
 			cmd := exec.Command("/bin/sh")
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			cmd.Run()
 			fmt.Print(hideCursor)
+			oldState, _ = term.MakeRaw(fd)
+			renderPaused.Store(false)
 		case 'r':
-			exec.Command("rc-service", "wlcsim", "restart").Run()
+			// Reboot the VM
+			term.Restore(fd, oldState)
+			fmt.Print(showCursor + clearScr)
+			fmt.Println("Rebooting...")
+			exec.Command("/sbin/reboot").Run()
+		case 's':
+			// Shutdown the VM
+			term.Restore(fd, oldState)
+			fmt.Print(showCursor + clearScr)
+			fmt.Println("Shutting down...")
+			exec.Command("/sbin/poweroff").Run()
 		}
 	}
 }
@@ -230,20 +268,27 @@ func fetchLogs() []logEntry {
 }
 
 func getNetworkInfo() (string, string) {
-	out, err := exec.Command("ip", "-4", "addr", "show", "eth0").Output()
+	// Auto-detect the primary non-loopback interface with an IPv4 address
+	out, err := exec.Command("ip", "-4", "-o", "addr", "show").Output()
 	if err != nil {
-		return "eth0", "acquiring..."
+		return "unknown", "acquiring..."
 	}
-	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "inet ") {
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				return "eth0", parts[1]
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		iface := fields[1]
+		if iface == "lo" {
+			continue
+		}
+		for i, f := range fields {
+			if f == "inet" && i+1 < len(fields) {
+				return iface, fields[i+1]
 			}
 		}
 	}
-	return "eth0", "acquiring..."
+	return "unknown", "acquiring..."
 }
 
 func formatUptime(secs int) string {

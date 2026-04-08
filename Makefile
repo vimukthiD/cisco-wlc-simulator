@@ -3,6 +3,21 @@ VERSION      := $(shell git describe --tags --always --dirty 2>/dev/null || echo
 BUILD_DIR    := build
 LDFLAGS      := -s -w -X main.version=$(VERSION)
 
+# Packer variables (override for CI, e.g. ACCELERATOR=kvm)
+ACCELERATOR       ?=
+EFI_FIRMWARE_CODE ?=
+EFI_FIRMWARE_VARS ?=
+PACKER_VARS        = -var "arch=$(ARCH)" -var "output_dir=$(CURDIR)/$(BUILD_DIR)" -var "binary_dir=$(CURDIR)/$(BUILD_DIR)"
+ifneq ($(ACCELERATOR),)
+  PACKER_VARS += -var "accelerator=$(ACCELERATOR)"
+endif
+ifneq ($(EFI_FIRMWARE_CODE),)
+  PACKER_VARS += -var "efi_firmware_code=$(EFI_FIRMWARE_CODE)"
+endif
+ifneq ($(EFI_FIRMWARE_VARS),)
+  PACKER_VARS += -var "efi_firmware_vars=$(EFI_FIRMWARE_VARS)"
+endif
+
 # ============================================================
 # Native build
 # ============================================================
@@ -48,26 +63,20 @@ build-linux-all: build-linux-amd64 build-linux-arm64
 # ============================================================
 
 .PHONY: ova-amd64
+ova-amd64: ARCH := amd64
 ova-amd64: build-linux-amd64
 	rm -rf $(BUILD_DIR)/packer-amd64
-	cd ova/packer && packer init . && packer build \
-		-var "arch=amd64" \
-		-var "output_dir=$(CURDIR)/$(BUILD_DIR)" \
-		-var "binary_dir=$(CURDIR)/$(BUILD_DIR)" \
-		.
+	cd ova/packer && packer init . && packer build $(PACKER_VARS) .
 	mv $(BUILD_DIR)/packer-amd64/wlcsim-amd64.qcow2 $(BUILD_DIR)/
 	rm -rf $(BUILD_DIR)/packer-amd64
 	./ova/scripts/package-ova.sh amd64 $(BUILD_DIR)
 	@echo "==> $(BUILD_DIR)/wlcsim-amd64.ova"
 
 .PHONY: ova-arm64
+ova-arm64: ARCH := arm64
 ova-arm64: build-linux-arm64
 	rm -rf $(BUILD_DIR)/packer-arm64
-	cd ova/packer && packer init . && packer build \
-		-var "arch=arm64" \
-		-var "output_dir=$(CURDIR)/$(BUILD_DIR)" \
-		-var "binary_dir=$(CURDIR)/$(BUILD_DIR)" \
-		.
+	cd ova/packer && packer init . && packer build $(PACKER_VARS) .
 	mv $(BUILD_DIR)/packer-arm64/wlcsim-arm64.qcow2 $(BUILD_DIR)/
 	rm -rf $(BUILD_DIR)/packer-arm64
 	./ova/scripts/package-ova.sh arm64 $(BUILD_DIR)

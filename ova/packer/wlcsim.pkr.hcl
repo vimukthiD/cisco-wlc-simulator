@@ -46,14 +46,34 @@ variable "memory" {
   default = 512
 }
 
+variable "accelerator" {
+  type    = string
+  default = ""
+  description = "QEMU accelerator (hvf, kvm, tcg). Empty string auto-detects: hvf on macOS, kvm on Linux."
+}
+
+variable "efi_firmware_code" {
+  type    = string
+  default = ""
+  description = "Path to UEFI firmware code (ARM64 only). Empty string auto-detects."
+}
+
+variable "efi_firmware_vars" {
+  type    = string
+  default = ""
+  description = "Path to UEFI firmware vars (ARM64 only). Empty string auto-detects."
+}
+
 locals {
   qemu_arch     = var.arch == "arm64" ? "aarch64" : "x86_64"
   alpine_arch   = var.arch == "arm64" ? "aarch64" : "x86_64"
   iso_url       = "https://dl-cdn.alpinelinux.org/alpine/v${var.alpine_version}/releases/${local.alpine_arch}/alpine-virt-${var.alpine_release}-${local.alpine_arch}.iso"
   machine_type  = var.arch == "arm64" ? "virt" : "pc"
   cpu_model     = var.arch == "arm64" ? "cortex-a72" : "qemu64"
-  accelerator   = var.arch == "arm64" ? "hvf" : "hvf"
+  accelerator   = var.accelerator != "" ? var.accelerator : "hvf"
   efi_boot      = var.arch == "arm64" ? true : false
+  efi_code      = var.efi_firmware_code != "" ? var.efi_firmware_code : "/opt/homebrew/share/qemu/edk2-aarch64-code.fd"
+  efi_vars      = var.efi_firmware_vars != "" ? var.efi_firmware_vars : "/opt/homebrew/share/qemu/edk2-arm-vars.fd"
   output_name   = "wlcsim-${var.arch}"
 }
 
@@ -72,8 +92,8 @@ source "qemu" "wlcsim" {
   machine_type      = local.machine_type
   accelerator       = local.accelerator
   efi_boot          = local.efi_boot
-  efi_firmware_code = local.efi_boot ? "/opt/homebrew/share/qemu/edk2-aarch64-code.fd" : ""
-  efi_firmware_vars = local.efi_boot ? "/opt/homebrew/share/qemu/edk2-arm-vars.fd" : ""
+  efi_firmware_code = local.efi_boot ? local.efi_code : ""
+  efi_firmware_vars = local.efi_boot ? local.efi_vars : ""
 
   net_device       = "virtio-net-pci"
   disk_interface   = "virtio"
@@ -87,11 +107,11 @@ source "qemu" "wlcsim" {
 
   ssh_username     = "root"
   ssh_password     = "packer"
-  ssh_timeout      = "10m"
+  ssh_timeout      = local.accelerator == "tcg" ? "30m" : "10m"
   shutdown_command  = "poweroff"
 
-  // EFI boot on ARM64 takes longer due to UEFI firmware init
-  boot_wait = var.arch == "arm64" ? "60s" : "30s"
+  // EFI boot on ARM64 takes longer; TCG emulation is even slower
+  boot_wait = local.accelerator == "tcg" ? "180s" : (var.arch == "arm64" ? "60s" : "30s")
   boot_command = [
     // Login as root (no password on live ISO)
     "root<enter><wait5>",
@@ -145,10 +165,22 @@ build {
       "echo y | setup-disk -m sys /dev/vda",
       "",
       "# Configure the installed system",
-      "# Find the root partition (could be vda2 or vda3 depending on EFI layout)",
-      "ROOT_DEV=$(blkid | grep -v fat | grep -v swap | grep vda | head -1 | cut -d: -f1)",
-      "echo \"Mounting root at $ROOT_DEV\"",
-      "mount $ROOT_DEV /mnt",
+      "# Find the root partition by probing each vda partition for /etc",
+      "ROOT_DEV=",
+      "for dev in $(blkid | grep vda | cut -d: -f1 | sort); do",
+      "  mount $dev /mnt 2>/dev/null || continue",
+      "  if [ -d /mnt/etc ]; then",
+      "    ROOT_DEV=$dev",
+      "    echo \"Found root at $dev\"",
+      "    break",
+      "  fi",
+      "  umount /mnt",
+      "done",
+      "[ -z \"$ROOT_DEV\" ] && echo 'ERROR: could not find root partition' && exit 1",
+      "# Ensure openssh is installed in the target system",
+      "mkdir -p /mnt/etc",
+      "cp /etc/resolv.conf /mnt/etc/resolv.conf",
+      "chroot /mnt apk add --no-cache openssh",
       "# Enable root SSH login on installed system",
       "sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /mnt/etc/ssh/sshd_config",
       "echo 'PermitRootLogin yes' >> /mnt/etc/ssh/sshd_config",
@@ -175,9 +207,9 @@ build {
     expect_disconnect = true
   }
 
-  # Wait for reboot into installed system (EFI boot + DHCP takes time)
+  # Wait for reboot into installed system (EFI boot + DHCP takes time; TCG is slower)
   provisioner "shell" {
-    pause_before = "60s"
+    pause_before = var.accelerator == "tcg" ? "180s" : "60s"
     inline       = ["echo 'Booted into installed system'; uname -a; hostname"]
   }
 

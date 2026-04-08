@@ -32,9 +32,9 @@
       <Annotation>Cisco 9800-CL Wireless LAN Controller Simulator. Provides RESTCONF, SSH, SNMP, SCP, and TFTP interfaces. Dashboard at http://&lt;vm-ip&gt;:8080</Annotation>
     </AnnotationSection>
 
-    <OperatingSystemSection ovf:id="101">
+    <OperatingSystemSection OS_SECTION_ATTRS>
       <Info>The operating system</Info>
-      <Description>Linux 64-Bit</Description>
+      <Description>OS_DESCRIPTION</Description>
     </OperatingSystemSection>
 
     <VirtualHardwareSection>
@@ -43,7 +43,7 @@
       <System>
         <vssd:ElementName>Virtual Hardware Family</vssd:ElementName>
         <vssd:InstanceID>0</vssd:InstanceID>
-        <vssd:VirtualSystemType>vmx-13</vssd:VirtualSystemType>
+        <vssd:VirtualSystemType>VSYS_TYPE</vssd:VirtualSystemType>
       </System>
 
       <!-- 2 vCPUs -->
@@ -72,7 +72,7 @@
         <rasd:Description>SCSI Controller</rasd:Description>
         <rasd:ElementName>SCSI Controller 0</rasd:ElementName>
         <rasd:InstanceID>3</rasd:InstanceID>
-        <rasd:ResourceSubType>lsilogic</rasd:ResourceSubType>
+        <rasd:ResourceSubType>SCSI_SUBTYPE</rasd:ResourceSubType>
         <rasd:ResourceType>6</rasd:ResourceType>
       </Item>
 
@@ -91,12 +91,14 @@
         <rasd:AddressOnParent>0</rasd:AddressOnParent>
         <rasd:AutomaticAllocation>true</rasd:AutomaticAllocation>
         <rasd:Connection>VM Network</rasd:Connection>
-        <rasd:Description>E1000 ethernet adapter on VM Network</rasd:Description>
+        <rasd:Description>NET_DESCRIPTION</rasd:Description>
         <rasd:ElementName>Network adapter 1</rasd:ElementName>
         <rasd:InstanceID>5</rasd:InstanceID>
-        <rasd:ResourceSubType>E1000</rasd:ResourceSubType>
+        <rasd:ResourceSubType>NET_SUBTYPE</rasd:ResourceSubType>
         <rasd:ResourceType>10</rasd:ResourceType>
       </Item>
+      EXTRA_HW_CONFIG
+      EXTRA_VMX_CONFIG
     </VirtualHardwareSection>
   </VirtualSystem>
 </Envelope>
