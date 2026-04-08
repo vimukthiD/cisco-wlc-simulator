@@ -1,0 +1,153 @@
+!
+! Last configuration change at 12:30:45 UTC Mon Mar 15 2024
+! NVRAM config last updated at 12:30:50 UTC Mon Mar 15 2024
+!
+version {{.Version}}
+service timestamps debug datetime msec localtime show-timezone
+service timestamps log datetime msec localtime show-timezone
+service password-encryption
+service call-home
+platform qfp utilization monitor load 80
+platform punt-keepalive disable-kernel-core
+platform hardware throughput level MB 1000
+!
+hostname {{.Hostname}}
+!
+boot-start-marker
+boot system flash bootflash:packages.conf
+boot-end-marker
+!
+logging buffered 16384 informational
+enable secret 9 $9$nGSHsEuW4k$z5kFVGO/S0LJxmUoRKFnEfLflk0v3Q4aCXwklRKLqjA
+!
+aaa new-model
+!
+aaa authentication login default local
+aaa authentication login CONSOLE local
+aaa authorization console
+aaa authorization exec default local
+aaa authorization network default local
+!
+aaa session-id common
+clock timezone UTC 0
+!
+ip domain name wlc.local
+ip name-server 8.8.8.8
+ip name-server 8.8.4.4
+!
+login on-success log
+!
+subscriber templating
+!
+multilink bundle-name authenticated
+!
+crypto pki trustpoint TP-self-signed-{{.SerialHash}}
+ enrollment selfsigned
+ subject-name cn=IOS-Self-Signed-Certificate-{{.SerialHash}}
+ revocation-check none
+ rsakeypair TP-self-signed-{{.SerialHash}}
+!
+crypto pki certificate chain TP-self-signed-{{.SerialHash}}
+ certificate self-signed 01
+  quit
+!
+license boot level network-advantage addon dna-advantage
+memory free low-watermark processor 131027
+!
+diagnostic bootup level minimal
+!
+spanning-tree extend system-id
+!
+username admin privilege 15 secret 9 $9$nGSHsEuW4k$z5kFVGO/S0LJxmUoRKFnEfLflk0v3Q4aCXwklRKLqjA
+!
+redundancy
+ mode sso
+!
+{{range .VLANs}}vlan {{.ID}}
+ name {{.Name}}
+!
+{{end}}interface GigabitEthernet1
+ ip address {{.IP}} 255.255.255.0
+ ip nat outside
+ negotiation auto
+ no shutdown
+!
+interface GigabitEthernet2
+ shutdown
+!
+interface Loopback0
+ ip address {{.IP}} 255.255.255.255
+!
+interface Vlan1
+ no ip address
+ shutdown
+!
+{{range .WLANs}}wlan {{.SSID}} {{.ID}} {{.SSID}}
+ security wpa wpa2
+ security wpa akm {{.AKM}}
+ security wpa wpa2 cipher aes-ccm128
+ no security wpa akm psk
+ no shutdown
+!
+{{end}}wireless aaa policy default-aaa-policy
+!
+wireless profile policy default-policy-profile
+ description "default policy profile"
+ vlan default
+ no shutdown
+!
+{{range .APs}}ap profile default-ap-profile
+ description "{{.Name}}"
+ country US
+ !
+{{end}}wireless country US
+wireless management interface GigabitEthernet1
+!
+ap dot11 24ghz cleanair
+ap dot11 5ghz cleanair
+ap dot11 24ghz rate RATE_1M disable
+ap dot11 24ghz rate RATE_2M disable
+ap dot11 24ghz rate RATE_5_5M disable
+!
+ip http server
+ip http authentication local
+ip http secure-server
+ip http secure-trustpoint TP-self-signed-{{.SerialHash}}
+ip http max-connections 16
+!
+ip ssh version 2
+ip ssh server algorithm publickey ecdsa-sha2-nistp256 ecdsa-sha2-nistp384 ecdsa-sha2-nistp521 ssh-rsa
+ip scp server enable
+!
+ip access-list extended ACL-WEBAUTH-REDIRECT
+ permit tcp any any eq www
+ permit tcp any any eq 443
+!
+snmp-server community public RO
+snmp-server community private RW
+snmp-server location {{.Hostname}}
+snmp-server contact admin@{{.Hostname}}.local
+snmp-server chassis-id {{.Serial}}
+snmp-server enable traps snmp authentication linkdown linkup coldstart warmstart
+snmp-server enable traps wireless
+!
+restconf
+!
+netconf-yang
+!
+line con 0
+ exec-timeout 0 0
+ privilege level 15
+ logging synchronous
+ login authentication CONSOLE
+ stopbits 1
+line vty 0 15
+ exec-timeout 30 0
+ privilege level 15
+ login authentication default
+ transport input ssh
+!
+ntp server 0.pool.ntp.org
+ntp server 1.pool.ntp.org
+!
+end

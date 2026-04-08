@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/vimukthi/cisco-wlc-sim/internal/device"
 	"gopkg.in/yaml.v3"
@@ -45,6 +46,7 @@ func Load(path string) (*Config, error) {
 		if d.SNMPPort == 0 {
 			d.SNMPPort = 161
 		}
+		// TFTPPort defaults to 0 (disabled). Set to 69 in config to enable.
 		if d.Model == "" {
 			d.Model = "C9800-CL-K9"
 		}
@@ -109,6 +111,18 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Auth.SNMPCommunity == "" {
 		cfg.Auth.SNMPCommunity = "public"
+	}
+
+	// Load config template if it exists alongside the config file
+	tmplText := ""
+	tmplPath := filepath.Join(filepath.Dir(path), "running-config.tmpl")
+	if data, err := os.ReadFile(tmplPath); err == nil {
+		tmplText = string(data)
+	}
+
+	// Render config for each device
+	for i := range cfg.Devices {
+		cfg.Devices[i].InitConfig(tmplText)
 	}
 
 	return &cfg, nil

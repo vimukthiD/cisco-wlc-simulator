@@ -15,6 +15,7 @@ import (
 	"github.com/vimukthi/cisco-wlc-sim/internal/restconf"
 	"github.com/vimukthi/cisco-wlc-sim/internal/snmp"
 	"github.com/vimukthi/cisco-wlc-sim/internal/sshsim"
+	"github.com/vimukthi/cisco-wlc-sim/internal/tftpsim"
 )
 
 func main() {
@@ -60,11 +61,14 @@ func main() {
 		}()
 	}
 
+	// TFTP manager — starts TFTP servers on-demand when triggered by SSH commands
+	tftpMgr := tftpsim.NewManager(logs)
+
 	// Start SSH servers (one per device)
 	for i := range cfg.Devices {
 		dev := &cfg.Devices[i]
 		go func() {
-			if err := sshsim.Serve(dev, cfg.Auth, logs); err != nil {
+			if err := sshsim.Serve(dev, cfg.Auth, logs, tftpMgr); err != nil {
 				log.Printf("[%s] SSH server error: %v", dev.Hostname, err)
 			}
 		}()
@@ -90,7 +94,7 @@ func main() {
 	log.Printf("Simulator running with %d device(s). Press Ctrl+C to stop.", len(cfg.Devices))
 	log.Printf("  Dashboard: http://localhost:%d", *dashPort)
 	for _, dev := range cfg.Devices {
-		log.Printf("  %s @ %s (HTTPS:%d, SSH:%d, SNMP:%d)", dev.Hostname, dev.IP, dev.HTTPSPort, dev.SSHPort, dev.SNMPPort)
+		log.Printf("  %s @ %s (HTTPS:%d, SSH:%d, SNMP:%d, TFTP:on-demand)", dev.Hostname, dev.IP, dev.HTTPSPort, dev.SSHPort, dev.SNMPPort)
 	}
 
 	sig := make(chan os.Signal, 1)

@@ -9,8 +9,9 @@ Inspired by [simsnmp](https://github.com/lfbayer/simsnmp) — one IP per simulat
 - **RESTCONF API** — `Cisco-IOS-XE-wireless-client-oper:client-oper-data` with all sub-endpoints (common-oper-data, dot11-oper-data, traffic-stats, sisf-db-mac, dc-info, policy-data)
 - **SSH CLI** — Cisco IOS-XE style shell with `show` commands
 - **SNMP Agent** — SNMPv2c with system, entity, and interface MIBs (device type, vendor, serial, model)
+- **SCP / TFTP** — download running-config via SCP (SFTP + legacy) or TFTP
 - **Web Dashboard** — real-time view of devices, clients, APs, and live access logs
-- **Multiple Devices** — each device gets its own IP, all on standard ports (SSH 22, HTTPS 443, SNMP 161)
+- **Multiple Devices** — each device gets its own IP, all on standard ports (SSH 22, HTTPS 443, SNMP 161, TFTP 69)
 - **Virtual IPs** — loopback aliases so each device is individually pingable
 - **YAML Config** — define devices, APs, and clients in a single config file
 
@@ -190,6 +191,7 @@ internal/
     handlers.go                  — RESTCONF endpoint handlers (YANG-format JSON)
   sshsim/server.go               — SSH server with Cisco IOS-XE CLI simulation, command logging
   snmp/server.go                 — SNMP agent with system, entity, and interface MIBs
+  tftpsim/server.go              — TFTP server serving running-config
   dashboard/
     server.go                    — Dashboard HTTP server with JSON API and SSE
     static/index.html            — Embedded single-page dashboard (HTML/CSS/JS)
