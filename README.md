@@ -8,8 +8,9 @@ Inspired by [simsnmp](https://github.com/lfbayer/simsnmp) — one IP per simulat
 
 - **RESTCONF API** — `Cisco-IOS-XE-wireless-client-oper:client-oper-data` with all sub-endpoints (common-oper-data, dot11-oper-data, traffic-stats, sisf-db-mac, dc-info, policy-data)
 - **SSH CLI** — Cisco IOS-XE style shell with `show` commands
+- **SNMP Agent** — SNMPv2c with system, entity, and interface MIBs (device type, vendor, serial, model)
 - **Web Dashboard** — real-time view of devices, clients, APs, and live access logs
-- **Multiple Devices** — each device gets its own IP, all on standard ports (SSH 22, HTTPS 443)
+- **Multiple Devices** — each device gets its own IP, all on standard ports (SSH 22, HTTPS 443, SNMP 161)
 - **Virtual IPs** — loopback aliases so each device is individually pingable
 - **YAML Config** — define devices, APs, and clients in a single config file
 
@@ -85,6 +86,35 @@ ssh admin@10.99.0.2
 #   show wlan summary
 ```
 
+### SNMP
+
+All devices respond to SNMPv2c queries on the standard port (161):
+
+```bash
+# Walk system MIB — device identity
+snmpwalk -v2c -c public 10.99.0.1 1.3.6.1.2.1.1
+
+# Get device name
+snmpget -v2c -c public 10.99.0.1 1.3.6.1.2.1.1.5.0
+
+# Get serial number (ENTITY-MIB)
+snmpget -v2c -c public 10.99.0.1 1.3.6.1.2.1.47.1.1.1.1.11.1
+
+# Get model name
+snmpget -v2c -c public 10.99.0.1 1.3.6.1.2.1.47.1.1.1.1.13.1
+
+# Walk interfaces
+snmpwalk -v2c -c public 10.99.0.1 1.3.6.1.2.1.2
+
+# Second device — same port, different IP
+snmpwalk -v2c -c public 10.99.0.2 1.3.6.1.2.1.1
+```
+
+Supported MIBs:
+- **SNMPv2-MIB** — sysDescr, sysObjectID (Catalyst 9800), sysUpTime, sysName, sysContact, sysLocation, sysServices
+- **ENTITY-MIB** — entPhysicalDescr, entPhysicalSerialNum, entPhysicalModelName, entPhysicalSoftwareRev, entPhysicalMfgName
+- **IF-MIB** — ifNumber, ifIndex, ifDescr, ifType, ifPhysAddress, ifAdminStatus, ifOperStatus
+
 ### Web Dashboard
 
 The dashboard runs on `http://localhost:8080` by default (configurable with `-dashboard-port`).
@@ -114,6 +144,7 @@ All devices are defined in `configs/devices.yaml`:
 auth:
   username: admin
   password: Cisco123
+  snmp_community: public
 
 devices:
   - hostname: WLC-SITE-A
@@ -158,6 +189,7 @@ internal/
     server.go                    — HTTPS server with self-signed TLS, basic auth, request logging
     handlers.go                  — RESTCONF endpoint handlers (YANG-format JSON)
   sshsim/server.go               — SSH server with Cisco IOS-XE CLI simulation, command logging
+  snmp/server.go                 — SNMP agent with system, entity, and interface MIBs
   dashboard/
     server.go                    — Dashboard HTTP server with JSON API and SSE
     static/index.html            — Embedded single-page dashboard (HTML/CSS/JS)

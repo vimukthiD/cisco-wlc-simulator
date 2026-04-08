@@ -214,6 +214,7 @@
   }
   .log-type.restconf { color: var(--accent); }
   .log-type.ssh { color: var(--cyan); }
+  .log-type.snmp { color: var(--orange); }
   .log-device { color: var(--yellow); min-width: 100px; }
   .log-detail { color: var(--text); flex: 1; }
   .log-status { min-width: 35px; text-align: right; }
@@ -352,6 +353,7 @@ function renderDeviceList() {
           <span><strong>${d.ip}</strong> :${d.https_port}</span>
           <span>Model: <strong>${d.model}</strong></span>
           <span>SSH: <strong>:${d.ssh_port}</strong></span>
+          <span>SNMP: <strong>:${d.snmp_port}</strong></span>
           <span>Version: <strong>${d.version}</strong></span>
           <span>APs: <strong>${apCount}</strong></span>
           <span>Clients: <strong>${clientCount}</strong></span>
@@ -461,6 +463,12 @@ function renderDetail() {
         <tr><td style="color:var(--text-dim)">Command</td><td><code>ssh -p ${d.ssh_port} ${auth.username}@${d.ip}</code></td></tr>
         <tr><td style="color:var(--text-dim)">Password</td><td><code>${auth.password}</code></td></tr>
       </table>
+      <h3 style="margin:20px 0 10px;font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">SNMP</h3>
+      <table>
+        <tr><td style="color:var(--text-dim)">Port</td><td>${d.snmp_port} (UDP)</td></tr>
+        <tr><td style="color:var(--text-dim)">Community</td><td><code>${auth.snmp_community}</code></td></tr>
+        <tr><td style="color:var(--text-dim)">Test</td><td><code style="word-break:break-all">snmpwalk -v2c -c ${auth.snmp_community} ${d.ip} 1.3.6.1.2.1.1</code></td></tr>
+      </table>
     </div>`;
 }
 
@@ -490,6 +498,8 @@ function statusClass(code) {
 function renderLogEntry(entry) {
   let detail = '';
   if (entry.type === 'restconf') {
+    detail = `${entry.method} ${entry.path}`;
+  } else if (entry.type === 'snmp') {
     detail = `${entry.method} ${entry.path}`;
   } else if (entry.command) {
     detail = `$ ${entry.command}`;

@@ -14,10 +14,11 @@ type Config struct {
 	Devices []device.Device `yaml:"devices"`
 }
 
-// Auth holds credentials for RESTCONF and SSH.
+// Auth holds credentials for RESTCONF, SSH, and SNMP.
 type Auth struct {
-	Username string `yaml:"username" json:"username"`
-	Password string `yaml:"password" json:"password"`
+	Username      string `yaml:"username" json:"username"`
+	Password      string `yaml:"password" json:"password"`
+	SNMPCommunity string `yaml:"snmp_community" json:"snmp_community"`
 }
 
 // Load reads and parses the YAML config file.
@@ -40,6 +41,9 @@ func Load(path string) (*Config, error) {
 		}
 		if d.SSHPort == 0 {
 			d.SSHPort = 22
+		}
+		if d.SNMPPort == 0 {
+			d.SNMPPort = 161
 		}
 		if d.Model == "" {
 			d.Model = "C9800-CL-K9"
@@ -102,6 +106,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Auth.Password == "" {
 		cfg.Auth.Password = "admin"
+	}
+	if cfg.Auth.SNMPCommunity == "" {
+		cfg.Auth.SNMPCommunity = "public"
 	}
 
 	return &cfg, nil

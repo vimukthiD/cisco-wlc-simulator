@@ -6,12 +6,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/vimukthi/cisco-wlc-sim/internal/accesslog"
 	"github.com/vimukthi/cisco-wlc-sim/internal/config"
 	"github.com/vimukthi/cisco-wlc-sim/internal/dashboard"
 	"github.com/vimukthi/cisco-wlc-sim/internal/network"
 	"github.com/vimukthi/cisco-wlc-sim/internal/restconf"
+	"github.com/vimukthi/cisco-wlc-sim/internal/snmp"
 	"github.com/vimukthi/cisco-wlc-sim/internal/sshsim"
 )
 
@@ -43,6 +45,10 @@ func main() {
 	}
 
 	logs := accesslog.NewStore(10000)
+	now := time.Now()
+	for i := range cfg.Devices {
+		cfg.Devices[i].StartTime = now
+	}
 
 	// Start RESTCONF HTTPS servers (one per device)
 	for i := range cfg.Devices {
@@ -64,6 +70,16 @@ func main() {
 		}()
 	}
 
+	// Start SNMP agents (one per device)
+	for i := range cfg.Devices {
+		dev := &cfg.Devices[i]
+		go func() {
+			if err := snmp.Serve(dev, cfg.Auth, logs); err != nil {
+				log.Printf("[%s] SNMP agent error: %v", dev.Hostname, err)
+			}
+		}()
+	}
+
 	// Start web dashboard
 	go func() {
 		if err := dashboard.Serve(*dashPort, cfg, logs); err != nil {
@@ -74,7 +90,7 @@ func main() {
 	log.Printf("Simulator running with %d device(s). Press Ctrl+C to stop.", len(cfg.Devices))
 	log.Printf("  Dashboard: http://localhost:%d", *dashPort)
 	for _, dev := range cfg.Devices {
-		log.Printf("  %s @ %s (HTTPS:%d, SSH:%d)", dev.Hostname, dev.IP, dev.HTTPSPort, dev.SSHPort)
+		log.Printf("  %s @ %s (HTTPS:%d, SSH:%d, SNMP:%d)", dev.Hostname, dev.IP, dev.HTTPSPort, dev.SSHPort, dev.SNMPPort)
 	}
 
 	sig := make(chan os.Signal, 1)

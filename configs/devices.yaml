@@ -1,6 +1,7 @@
 auth:
   username: admin
   password: Cisco123
+  snmp_community: public
 
 devices:
   - hostname: WLC-SITE-A

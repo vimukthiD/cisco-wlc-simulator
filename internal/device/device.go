@@ -1,15 +1,19 @@
 package device
 
+import "time"
+
 // Device represents a simulated Cisco 9800-CL WLC.
 type Device struct {
-	Hostname  string `yaml:"hostname" json:"hostname"`
-	IP        string `yaml:"ip" json:"ip"`
-	HTTPSPort int    `yaml:"https_port" json:"https_port"`
-	SSHPort   int    `yaml:"ssh_port" json:"ssh_port"`
-	Model     string `yaml:"model" json:"model"`
-	Serial    string `yaml:"serial" json:"serial"`
-	Version   string `yaml:"version" json:"version"`
-	APs       []AP   `yaml:"aps" json:"aps"`
+	Hostname  string    `yaml:"hostname" json:"hostname"`
+	IP        string    `yaml:"ip" json:"ip"`
+	HTTPSPort int       `yaml:"https_port" json:"https_port"`
+	SSHPort   int       `yaml:"ssh_port" json:"ssh_port"`
+	SNMPPort  int       `yaml:"snmp_port" json:"snmp_port"`
+	Model     string    `yaml:"model" json:"model"`
+	Serial    string    `yaml:"serial" json:"serial"`
+	Version   string    `yaml:"version" json:"version"`
+	APs       []AP      `yaml:"aps" json:"aps"`
+	StartTime time.Time `yaml:"-" json:"-"`
 }
 
 // AP represents a simulated access point.
