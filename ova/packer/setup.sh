@@ -3,7 +3,7 @@
 set -eu
 
 echo "=== Installing packages ==="
-apk add --no-cache iproute2 arping
+apk add --no-cache iproute2 iputils
 
 echo "=== Installing simulator binaries ==="
 install -m 755 /tmp/wlcsim /usr/local/bin/wlcsim

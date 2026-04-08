@@ -49,21 +49,27 @@ build-linux-all: build-linux-amd64 build-linux-arm64
 
 .PHONY: ova-amd64
 ova-amd64: build-linux-amd64
+	rm -rf $(BUILD_DIR)/packer-amd64
 	cd ova/packer && packer init . && packer build \
 		-var "arch=amd64" \
 		-var "output_dir=$(CURDIR)/$(BUILD_DIR)" \
 		-var "binary_dir=$(CURDIR)/$(BUILD_DIR)" \
 		.
+	mv $(BUILD_DIR)/packer-amd64/wlcsim-amd64.qcow2 $(BUILD_DIR)/
+	rm -rf $(BUILD_DIR)/packer-amd64
 	./ova/scripts/package-ova.sh amd64 $(BUILD_DIR)
 	@echo "==> $(BUILD_DIR)/wlcsim-amd64.ova"
 
 .PHONY: ova-arm64
 ova-arm64: build-linux-arm64
+	rm -rf $(BUILD_DIR)/packer-arm64
 	cd ova/packer && packer init . && packer build \
 		-var "arch=arm64" \
 		-var "output_dir=$(CURDIR)/$(BUILD_DIR)" \
 		-var "binary_dir=$(CURDIR)/$(BUILD_DIR)" \
 		.
+	mv $(BUILD_DIR)/packer-arm64/wlcsim-arm64.qcow2 $(BUILD_DIR)/
+	rm -rf $(BUILD_DIR)/packer-arm64
 	./ova/scripts/package-ova.sh arm64 $(BUILD_DIR)
 	@echo "==> $(BUILD_DIR)/wlcsim-arm64.ova"
 

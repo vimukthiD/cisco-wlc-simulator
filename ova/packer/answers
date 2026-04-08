@@ -1,4 +1,4 @@
-KEYMAPOPTS="us us"
+KEYMAPOPTS="none"
 HOSTNAMEOPTS="-n wlcsim"
 INTERFACESOPTS="auto lo
 iface lo inet loopback
@@ -13,3 +13,4 @@ APKREPOSOPTS="-1"
 SSHDOPTS="-c openssh"
 NTPOPTS="-c none"
 DISKOPTS="-m sys /dev/vda"
+ERASE_DISKS="/dev/vda"
