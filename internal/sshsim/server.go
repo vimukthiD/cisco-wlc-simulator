@@ -17,10 +17,10 @@ import (
 
 	"github.com/pin/tftp/v3"
 	"github.com/pkg/sftp"
-	"github.com/vimukthi/cisco-wlc-sim/internal/accesslog"
-	"github.com/vimukthi/cisco-wlc-sim/internal/config"
-	"github.com/vimukthi/cisco-wlc-sim/internal/device"
-	"github.com/vimukthi/cisco-wlc-sim/internal/tftpsim"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/accesslog"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/config"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/device"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/tftpsim"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -681,7 +681,9 @@ func showDir(parts []string) string {
 // handleInteractiveCopy handles all copy commands with interactive Cisco-style
 // prompts and performs actual TFTP client push when applicable.
 // Handles: copy <any-source> tftp, copy <any-source> scp,
-//          copy <source> tftp://host/file
+//
+//	copy <source> tftp://host/file
+//
 // Returns true if the command was handled.
 func handleInteractiveCopy(cmd string, channel ssh.Channel, dev *device.Device, tftpMgr *tftpsim.Manager, logCmd func(string)) bool {
 	parts := strings.Fields(cmd)
@@ -878,9 +880,9 @@ type virtualFileInfo struct {
 	size int64
 }
 
-func (fi *virtualFileInfo) Name() string      { return fi.name }
-func (fi *virtualFileInfo) Size() int64       { return fi.size }
-func (fi *virtualFileInfo) Mode() fs.FileMode { return 0644 }
+func (fi *virtualFileInfo) Name() string       { return fi.name }
+func (fi *virtualFileInfo) Size() int64        { return fi.size }
+func (fi *virtualFileInfo) Mode() fs.FileMode  { return 0644 }
 func (fi *virtualFileInfo) ModTime() time.Time { return time.Now() }
 func (fi *virtualFileInfo) IsDir() bool        { return false }
 func (fi *virtualFileInfo) Sys() interface{}   { return nil }

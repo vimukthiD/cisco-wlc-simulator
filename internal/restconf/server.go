@@ -15,9 +15,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/vimukthi/cisco-wlc-sim/internal/accesslog"
-	"github.com/vimukthi/cisco-wlc-sim/internal/config"
-	"github.com/vimukthi/cisco-wlc-sim/internal/device"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/accesslog"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/config"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/device"
 )
 
 // Serve starts an HTTPS RESTCONF server for the given device.
@@ -126,7 +126,7 @@ func logRequests(next http.Handler, dev *device.Device, logs *accesslog.Store) h
 			DeviceHost: dev.Hostname,
 			DeviceIP:   dev.IP,
 			Type:       "restconf",
-			Source:      r.RemoteAddr,
+			Source:     r.RemoteAddr,
 			Method:     r.Method,
 			Path:       r.URL.Path,
 			Status:     sw.code,

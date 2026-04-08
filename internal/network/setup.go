@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/vimukthi/cisco-wlc-sim/internal/device"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/device"
 )
 
 // SetupIPs adds virtual IP aliases for each device.

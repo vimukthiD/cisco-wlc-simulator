@@ -6,14 +6,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vimukthi/cisco-wlc-sim/internal/accesslog"
-	"github.com/vimukthi/cisco-wlc-sim/internal/config"
-	"github.com/vimukthi/cisco-wlc-sim/internal/device"
-	"github.com/vimukthi/cisco-wlc-sim/internal/network"
-	"github.com/vimukthi/cisco-wlc-sim/internal/restconf"
-	"github.com/vimukthi/cisco-wlc-sim/internal/snmp"
-	"github.com/vimukthi/cisco-wlc-sim/internal/sshsim"
-	"github.com/vimukthi/cisco-wlc-sim/internal/tftpsim"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/accesslog"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/config"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/device"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/network"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/restconf"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/snmp"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/sshsim"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/tftpsim"
 )
 
 // Simulator manages the lifecycle of simulated WLC devices.

@@ -9,9 +9,9 @@ import (
 	"github.com/gosnmp/gosnmp"
 	GoSNMPServer "github.com/slayercat/GoSNMPServer"
 
-	"github.com/vimukthi/cisco-wlc-sim/internal/accesslog"
-	"github.com/vimukthi/cisco-wlc-sim/internal/config"
-	"github.com/vimukthi/cisco-wlc-sim/internal/device"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/accesslog"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/config"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/device"
 )
 
 // Serve starts an SNMP agent for the given device.
@@ -19,7 +19,7 @@ func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store) error {
 	oids := buildOIDs(dev, logs)
 
 	master := GoSNMPServer.MasterAgent{
-		Logger: GoSNMPServer.NewDiscardLogger(),
+		Logger:         GoSNMPServer.NewDiscardLogger(),
 		SecurityConfig: GoSNMPServer.SecurityConfig{},
 		SubAgents: []*GoSNMPServer.SubAgent{
 			{

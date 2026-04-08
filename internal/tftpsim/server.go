@@ -14,8 +14,8 @@ import (
 	"github.com/pin/tftp/v3"
 	"golang.org/x/sys/unix"
 
-	"github.com/vimukthi/cisco-wlc-sim/internal/accesslog"
-	"github.com/vimukthi/cisco-wlc-sim/internal/device"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/accesslog"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/device"
 )
 
 const idleTimeout = 30 * time.Second
@@ -29,10 +29,10 @@ type Manager struct {
 }
 
 type instance struct {
-	server   *tftp.Server
-	conn     net.PacketConn
-	timer    *time.Timer
-	mu       sync.Mutex
+	server *tftp.Server
+	conn   net.PacketConn
+	timer  *time.Timer
+	mu     sync.Mutex
 }
 
 func (inst *instance) touch() {

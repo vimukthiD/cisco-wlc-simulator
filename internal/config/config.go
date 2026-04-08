@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/vimukthi/cisco-wlc-sim/internal/device"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/device"
 	"gopkg.in/yaml.v3"
 )
 

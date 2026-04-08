@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vimukthi/cisco-wlc-sim/internal/device"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/device"
 )
 
 func wantsJSON(r *http.Request) bool {
@@ -229,22 +229,22 @@ func buildCommonOperData(clients []device.ClientWithAP) []map[string]any {
 			"client-type":   "dot11-client",
 			"co-state":      c.State,
 			"wlan-policy": map[string]any{
-				"current-switching-mode":  "central",
-				"wlan-switching-mode":     "central",
-				"central-authentication":  true,
-				"central-dhcp":            true,
-				"central-assoc-enable":    true,
-				"vlan-central-switching":  false,
-				"is-fabric-client":        false,
-				"is-guest-fabric-client":  false,
+				"current-switching-mode": "central",
+				"wlan-switching-mode":    "central",
+				"central-authentication": true,
+				"central-dhcp":           true,
+				"central-assoc-enable":   true,
+				"vlan-central-switching": false,
+				"is-fabric-client":       false,
+				"is-guest-fabric-client": false,
 			},
-			"username":                     c.Username,
-			"method-id":                    methodID(c.AuthKeyMgmt),
-			"idle-timeout":                 300,
-			"session-timeout":              1800,
-			"vrf-name":                     "",
-			"is-locally-administered-mac":  false,
-			"aaa-override-passphrase":      false,
+			"username":                    c.Username,
+			"method-id":                   methodID(c.AuthKeyMgmt),
+			"idle-timeout":                300,
+			"session-timeout":             1800,
+			"vrf-name":                    "",
+			"is-locally-administered-mac": false,
+			"aaa-override-passphrase":     false,
 		}
 		result = append(result, entry)
 	}
@@ -260,36 +260,36 @@ func buildDot11OperData(clients []device.ClientWithAP) []map[string]any {
 			bssid = cwa.AP.MAC
 		}
 		entry := map[string]any{
-			"ms-mac-address":   c.MAC,
-			"dot11-state":      "dot11-state-associated",
-			"ms-bssid":         bssid,
-			"ap-mac-address":   cwa.AP.MAC,
-			"current-channel":  c.Channel,
-			"ms-wlan-id":       c.WLANId,
-			"vap-ssid":         c.SSID,
-			"policy-profile":   c.PolicyProfile,
-			"ms-ap-slot-id":    1,
-			"radio-type":       c.RadioType,
-			"ms-assoc-time":    assocTime(c),
-			"wlan-profile":     wlanProfile(c),
-			"encryption-type":  c.EncryptionType,
-			"security-mode":    c.SecurityMode,
-			"dot11-6ghz-cap":   false,
+			"ms-mac-address":  c.MAC,
+			"dot11-state":     "dot11-state-associated",
+			"ms-bssid":        bssid,
+			"ap-mac-address":  cwa.AP.MAC,
+			"current-channel": c.Channel,
+			"ms-wlan-id":      c.WLANId,
+			"vap-ssid":        c.SSID,
+			"policy-profile":  c.PolicyProfile,
+			"ms-ap-slot-id":   1,
+			"radio-type":      c.RadioType,
+			"ms-assoc-time":   assocTime(c),
+			"wlan-profile":    wlanProfile(c),
+			"encryption-type": c.EncryptionType,
+			"security-mode":   c.SecurityMode,
+			"dot11-6ghz-cap":  false,
 			"ms-wifi": map[string]any{
-				"wpa-version":              c.SecurityMode,
-				"cipher-suite":             c.EncryptionType,
-				"auth-key-mgmt":            c.AuthKeyMgmt,
-				"group-mgmt-cipher-suite":  c.EncryptionType,
-				"group-cipher-suite":       c.EncryptionType,
-				"pwe-mode":                 "sae-pwe-mode-none",
+				"wpa-version":             c.SecurityMode,
+				"cipher-suite":            c.EncryptionType,
+				"auth-key-mgmt":           c.AuthKeyMgmt,
+				"group-mgmt-cipher-suite": c.EncryptionType,
+				"group-cipher-suite":      c.EncryptionType,
+				"pwe-mode":                "sae-pwe-mode-none",
 			},
-			"ms-wme-enabled":      true,
-			"dot11w-enabled":      true,
-			"bss-trans-capable":   true,
-			"ewlc-ms-phy-type":   c.RadioType,
-			"dms-capable":         false,
-			"qosmap-capable":      true,
-			"link-local-enable":   false,
+			"ms-wme-enabled":    true,
+			"dot11w-enabled":    true,
+			"bss-trans-capable": true,
+			"ewlc-ms-phy-type":  c.RadioType,
+			"dms-capable":       false,
+			"qosmap-capable":    true,
+			"link-local-enable": false,
 		}
 		result = append(result, entry)
 	}
@@ -301,28 +301,28 @@ func buildTrafficStats(clients []device.ClientWithAP) []map[string]any {
 	for _, cwa := range clients {
 		c := cwa.Client
 		entry := map[string]any{
-			"ms-mac-address":      c.MAC,
-			"bytes-rx":            c.BytesRx,
-			"bytes-tx":            c.BytesTx,
-			"pkts-rx":             c.PktsRx,
-			"pkts-tx":             c.PktsTx,
-			"data-retries":        c.DataRetries,
-			"rts-retries":         0,
-			"duplicate-rcv":       0,
-			"decrypt-failed":      0,
-			"mic-mismatch":        0,
-			"mic-missing":         0,
-			"most-recent-rssi":    c.RSSI,
-			"most-recent-snr":     c.SNR,
+			"ms-mac-address":       c.MAC,
+			"bytes-rx":             c.BytesRx,
+			"bytes-tx":             c.BytesTx,
+			"pkts-rx":              c.PktsRx,
+			"pkts-tx":              c.PktsTx,
+			"data-retries":         c.DataRetries,
+			"rts-retries":          0,
+			"duplicate-rcv":        0,
+			"decrypt-failed":       0,
+			"mic-mismatch":         0,
+			"mic-missing":          0,
+			"most-recent-rssi":     c.RSSI,
+			"most-recent-snr":      c.SNR,
 			"tx-excessive-retries": 0,
-			"tx-retries":          c.DataRetries * 2,
-			"power-save-state":    0,
-			"current-rate":        fmt.Sprintf("%d.0", c.Speed),
-			"speed":               c.Speed,
-			"spatial-stream":      c.SpatialStreams,
-			"client-active":       true,
-			"rx-group-counter":    0,
-			"tx-total-drops":      0,
+			"tx-retries":           c.DataRetries * 2,
+			"power-save-state":     0,
+			"current-rate":         fmt.Sprintf("%d.0", c.Speed),
+			"speed":                c.Speed,
+			"spatial-stream":       c.SpatialStreams,
+			"client-active":        true,
+			"rx-group-counter":     0,
+			"tx-total-drops":       0,
 		}
 		result = append(result, entry)
 	}
@@ -431,8 +431,8 @@ func buildCapwapData(dev *device.Device) []map[string]any {
 			model = "C9120AXI-B"
 		}
 		entry := map[string]any{
-			"wtp-mac":               ap.MAC,
-			"ap-name":               ap.Name,
+			"wtp-mac": ap.MAC,
+			"ap-name": ap.Name,
 			"device-detail": map[string]any{
 				"static-info": map[string]any{
 					"board-data": map[string]any{
@@ -441,8 +441,8 @@ func buildCapwapData(dev *device.Device) []map[string]any {
 					},
 					"ap-model-name": model,
 				},
-				"ap-ip-addr":        dev.IP,
-				"wtp-version":       dev.Version,
+				"ap-ip-addr":  dev.IP,
+				"wtp-version": dev.Version,
 			},
 			"tag-info": map[string]any{
 				"site-tag": map[string]any{
@@ -455,10 +455,10 @@ func buildCapwapData(dev *device.Device) []map[string]any {
 					"rf-tag-name": "default-rf-tag",
 				},
 			},
-			"admin-state":           true,
-			"client-count":          clientCount,
-			"ap-operation-state":    "ap-state-registered",
-			"ap-join-state":         "ap-join-state-joined",
+			"admin-state":        true,
+			"client-count":       clientCount,
+			"ap-operation-state": "ap-state-registered",
+			"ap-join-state":      "ap-join-state-joined",
 		}
 		result = append(result, entry)
 	}
@@ -481,18 +481,18 @@ func buildRadioOperData(dev *device.Device) []map[string]any {
 	for _, ap := range dev.APs {
 		// Slot 0: 2.4 GHz
 		result = append(result, map[string]any{
-			"wtp-mac":           ap.MAC,
-			"radio-slot-id":     0,
-			"slot-id":           0,
-			"radio-type":        "radio-type-dot11bg",
-			"oper-state":        true,
-			"radio-mode":        "radio-mode-local",
-			"current-channel":   6,
-			"current-tx-power":  17,
-			"channel-width":     "cw-20-mhz",
-			"station-count":     0,
-			"utilization":       10,
-			"noise":             -95,
+			"wtp-mac":          ap.MAC,
+			"radio-slot-id":    0,
+			"slot-id":          0,
+			"radio-type":       "radio-type-dot11bg",
+			"oper-state":       true,
+			"radio-mode":       "radio-mode-local",
+			"current-channel":  6,
+			"current-tx-power": 17,
+			"channel-width":    "cw-20-mhz",
+			"station-count":    0,
+			"utilization":      10,
+			"noise":            -95,
 		})
 		// Slot 1: 5 GHz
 		clientCount := 0
@@ -504,18 +504,18 @@ func buildRadioOperData(dev *device.Device) []map[string]any {
 			}
 		}
 		result = append(result, map[string]any{
-			"wtp-mac":           ap.MAC,
-			"radio-slot-id":     1,
-			"slot-id":           1,
-			"radio-type":        "radio-type-dot11a",
-			"oper-state":        true,
-			"radio-mode":        "radio-mode-local",
-			"current-channel":   ch,
-			"current-tx-power":  20,
-			"channel-width":     "cw-80-mhz",
-			"station-count":     clientCount,
-			"utilization":       25,
-			"noise":             -92,
+			"wtp-mac":          ap.MAC,
+			"radio-slot-id":    1,
+			"slot-id":          1,
+			"radio-type":       "radio-type-dot11a",
+			"oper-state":       true,
+			"radio-mode":       "radio-mode-local",
+			"current-channel":  ch,
+			"current-tx-power": 20,
+			"channel-width":    "cw-80-mhz",
+			"station-count":    clientCount,
+			"utilization":      25,
+			"noise":            -92,
 		})
 	}
 	return result

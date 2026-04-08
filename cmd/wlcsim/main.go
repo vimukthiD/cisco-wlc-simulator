@@ -8,11 +8,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/vimukthi/cisco-wlc-sim/internal/accesslog"
-	"github.com/vimukthi/cisco-wlc-sim/internal/config"
-	"github.com/vimukthi/cisco-wlc-sim/internal/dashboard"
-	"github.com/vimukthi/cisco-wlc-sim/internal/network"
-	"github.com/vimukthi/cisco-wlc-sim/internal/simulator"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/accesslog"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/config"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/dashboard"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/network"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/simulator"
 )
 
 func main() {

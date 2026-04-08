@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/vimukthi/cisco-wlc-sim/internal/accesslog"
-	"github.com/vimukthi/cisco-wlc-sim/internal/device"
-	"github.com/vimukthi/cisco-wlc-sim/internal/simulator"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/accesslog"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/device"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/simulator"
 )
 
 var startTime = time.Now()

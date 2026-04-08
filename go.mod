@@ -1,4 +1,4 @@
-module github.com/vimukthi/cisco-wlc-sim
+module github.com/vimukthiD/cisco-wlc-simulator
 
 go 1.25.7
 
