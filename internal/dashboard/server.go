@@ -6,10 +6,65 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/vimukthi/cisco-wlc-sim/internal/accesslog"
 	"github.com/vimukthi/cisco-wlc-sim/internal/config"
 )
+
+var startTime = time.Now()
+
+// cpuSampler tracks process CPU usage by sampling getrusage periodically.
+type cpuSampler struct {
+	mu      sync.Mutex
+	cpuPct  float64
+	lastCPU time.Duration
+	lastAt  time.Time
+}
+
+func newCPUSampler() *cpuSampler {
+	s := &cpuSampler{
+		lastCPU: getProcessCPUTime(),
+		lastAt:  time.Now(),
+	}
+	go s.loop()
+	return s
+}
+
+func (s *cpuSampler) loop() {
+	ticker := time.NewTicker(2 * time.Second)
+	for range ticker.C {
+		now := time.Now()
+		cpuNow := getProcessCPUTime()
+
+		s.mu.Lock()
+		wall := now.Sub(s.lastAt).Seconds()
+		cpu := (cpuNow - s.lastCPU).Seconds()
+		if wall > 0 {
+			s.cpuPct = (cpu / wall) * 100
+		}
+		s.lastCPU = cpuNow
+		s.lastAt = now
+		s.mu.Unlock()
+	}
+}
+
+func (s *cpuSampler) Usage() float64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cpuPct
+}
+
+func getProcessCPUTime() time.Duration {
+	var rusage syscall.Rusage
+	syscall.Getrusage(syscall.RUSAGE_SELF, &rusage)
+	user := time.Duration(rusage.Utime.Sec)*time.Second + time.Duration(rusage.Utime.Usec)*time.Microsecond
+	sys := time.Duration(rusage.Stime.Sec)*time.Second + time.Duration(rusage.Stime.Usec)*time.Microsecond
+	return user + sys
+}
 
 //go:embed static/*
 var staticFS embed.FS
@@ -17,8 +72,26 @@ var staticFS embed.FS
 // Serve starts the dashboard HTTP server.
 func Serve(port int, cfg *config.Config, logs *accesslog.Store) error {
 	mux := http.NewServeMux()
+	cpu := newCPUSampler()
 
 	// API endpoints
+	mux.HandleFunc("/api/system", func(w http.ResponseWriter, r *http.Request) {
+		var mem runtime.MemStats
+		runtime.ReadMemStats(&mem)
+		writeJSON(w, map[string]any{
+			"uptime_secs":    int(time.Since(startTime).Seconds()),
+			"goroutines":     runtime.NumGoroutine(),
+			"cpu_count":      runtime.NumCPU(),
+			"cpu_pct":        cpu.Usage(),
+			"mem_alloc":      mem.Alloc,
+			"mem_sys":        mem.Sys,
+			"mem_heap_alloc": mem.HeapAlloc,
+			"mem_heap_sys":   mem.HeapSys,
+			"gc_cycles":      mem.NumGC,
+			"gc_pause_ns":    mem.PauseTotalNs,
+		})
+	})
+
 	mux.HandleFunc("/api/auth", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, cfg.Auth)
 	})
