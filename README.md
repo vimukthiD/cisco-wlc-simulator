@@ -208,10 +208,60 @@ See [configs/devices.yaml](configs/devices.yaml) for a full example with two dev
 | `-setup-ips` | `false` | Only add IP aliases, then exit |
 | `-teardown-ips` | `false` | Only remove IP aliases, then exit |
 
+## VM Appliance (OVA)
+
+Pre-built VM images are available for deploying the simulator as a standalone virtual appliance. The VM boots directly into LAN mode with a console status display.
+
+### Building OVA Images
+
+Requires: Go 1.21+, [Packer](https://www.packer.io/), [QEMU](https://www.qemu.org/)
+
+```bash
+brew install packer qemu    # macOS
+
+make ova-arm64              # ARM64 (Apple Silicon, UTM)
+make ova-amd64              # AMD64 (Intel, VMware, VirtualBox)
+make ova-all                # Both architectures
+```
+
+Output: `build/wlcsim-arm64.ova` (~70MB), `build/wlcsim-amd64.ova`
+
+### What's Inside
+
+- **Alpine Linux** minimal (virt kernel) — fast boot (~3s), small footprint
+- **Auto-start**: simulator launches in LAN mode on boot via OpenRC
+- **Console TUI**: VM console shows device list, IPs, dashboard URL, and log tail
+- **Networking**: DHCP on eth0, bridged to host network
+- **Dashboard**: accessible at `http://<vm-ip>:8080`
+- **All protocols**: SSH (22), HTTPS (443), SNMP (161) on auto-assigned LAN IPs
+
+### Deploying
+
+1. Import the OVA into VMware, VirtualBox, or UTM
+2. Set the network adapter to **Bridged** mode
+3. Boot the VM
+4. The console displays assigned IPs and dashboard URL
+5. Access devices from any machine on the LAN
+
+### Makefile Targets
+
+```
+make build              Build native binaries
+make run                Run simulator (local mode, requires sudo)
+make run-lan            Run simulator (LAN mode, requires sudo)
+make build-linux-all    Cross-compile for Linux (amd64 + arm64)
+make ova-amd64          Build AMD64 OVA
+make ova-arm64          Build ARM64 OVA
+make ova-all            Build both OVAs
+make clean              Remove build artifacts
+```
+
 ## Architecture
 
 ```
-cmd/wlcsim/main.go              — Entry point, flags, signal handling, auto IP lifecycle
+cmd/
+  wlcsim/main.go                 — Entry point, flags, signal handling, auto IP lifecycle
+  wlcsim-console/main.go         — Console TUI for VM appliance (ANSI status display)
 internal/
   config/config.go               — YAML config loading with defaults, template loading
   device/device.go               — Device, AP, Client models, config template rendering
@@ -234,6 +284,13 @@ internal/
 configs/
   devices.yaml                   — Sample config with 2 WLCs, 4 APs, 7 clients
   running-config.tmpl            — Customizable Cisco IOS-XE config template
+ova/
+  packer/wlcsim.pkr.hcl          — Packer template (QEMU builder, ARM64/AMD64)
+  packer/setup.sh                — Post-install provisioning script
+  scripts/package-ova.sh         — qcow2 → VMDK → OVA packaging
+  templates/wlcsim.ovf.tmpl      — OVF descriptor template
+  rootfs/                        — Alpine rootfs overlay (service, config, networking)
+Makefile                         — Build, run, and OVA targets
 ```
 
 ### How It Works
