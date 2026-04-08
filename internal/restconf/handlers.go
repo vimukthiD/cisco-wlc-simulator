@@ -2,19 +2,113 @@ package restconf
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/vimukthi/cisco-wlc-sim/internal/device"
 )
 
-func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/yang-data+json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	enc.Encode(v)
+func wantsJSON(r *http.Request) bool {
+	accept := r.Header.Get("Accept")
+	return strings.Contains(accept, "json")
 }
+
+func writeResponse(w http.ResponseWriter, r *http.Request, v any, xmlRoot string, xmlNS string) {
+	if wantsJSON(r) {
+		w.Header().Set("Content-Type", "application/yang-data+json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		enc.Encode(v)
+		return
+	}
+	// Default: XML
+	w.Header().Set("Content-Type", "application/yang-data+xml")
+	xmlData := toXML(v, xmlRoot, xmlNS)
+	w.Write([]byte(xml.Header))
+	w.Write(xmlData)
+}
+
+// toXML renders a map[string]any structure as YANG-style XML.
+func toXML(v any, rootName string, ns string) []byte {
+	var sb strings.Builder
+
+	// Unwrap the top-level map: {"Cisco-...:name": <inner>}
+	var inner any
+	if m, ok := v.(map[string]any); ok {
+		for _, val := range m {
+			inner = val
+			break
+		}
+	}
+
+	// If inner is a list ([]map[string]any), wrap each item in the root element
+	if items, ok := inner.([]map[string]any); ok {
+		for _, item := range items {
+			sb.WriteString(fmt.Sprintf("<%s xmlns=\"%s\">\n", rootName, ns))
+			writeXMLMap(&sb, item, 1)
+			sb.WriteString(fmt.Sprintf("</%s>\n", rootName))
+		}
+		return []byte(sb.String())
+	}
+
+	// Otherwise it's a map (the full client-oper-data container)
+	sb.WriteString(fmt.Sprintf("<%s xmlns=\"%s\">\n", rootName, ns))
+	if m, ok := inner.(map[string]any); ok {
+		writeXMLMap(&sb, m, 1)
+	}
+	sb.WriteString(fmt.Sprintf("</%s>\n", rootName))
+	return []byte(sb.String())
+}
+
+func writeXMLMap(sb *strings.Builder, m map[string]any, indent int) {
+	prefix := strings.Repeat("  ", indent)
+	for key, val := range m {
+		switch v := val.(type) {
+		case []map[string]any:
+			for _, item := range v {
+				sb.WriteString(fmt.Sprintf("%s<%s>\n", prefix, key))
+				writeXMLMap(sb, item, indent+1)
+				sb.WriteString(fmt.Sprintf("%s</%s>\n", prefix, key))
+			}
+		case map[string]any:
+			sb.WriteString(fmt.Sprintf("%s<%s>\n", prefix, key))
+			writeXMLMap(sb, v, indent+1)
+			sb.WriteString(fmt.Sprintf("%s</%s>\n", prefix, key))
+		case []any:
+			for _, item := range v {
+				if im, ok := item.(map[string]any); ok {
+					sb.WriteString(fmt.Sprintf("%s<%s>\n", prefix, key))
+					writeXMLMap(sb, im, indent+1)
+					sb.WriteString(fmt.Sprintf("%s</%s>\n", prefix, key))
+				} else {
+					sb.WriteString(fmt.Sprintf("%s<%s>%v</%s>\n", prefix, key, item, key))
+				}
+			}
+		case bool:
+			if v {
+				sb.WriteString(fmt.Sprintf("%s<%s>true</%s>\n", prefix, key, key))
+			} else {
+				sb.WriteString(fmt.Sprintf("%s<%s>false</%s>\n", prefix, key, key))
+			}
+		default:
+			sb.WriteString(fmt.Sprintf("%s<%s>%v</%s>\n", prefix, key, val, key))
+		}
+	}
+}
+
+func writeXMLValue(sb *strings.Builder, val any, indent int) {
+	switch v := val.(type) {
+	case map[string]any:
+		writeXMLMap(sb, v, indent)
+	default:
+		sb.WriteString(fmt.Sprintf("%v", val))
+	}
+}
+
+const yangNS = "http://cisco.com/ns/yang/Cisco-IOS-XE-wireless-client-oper"
 
 func handleClientOperData(w http.ResponseWriter, r *http.Request, dev *device.Device) {
 	clients := dev.AllClients()
@@ -28,7 +122,7 @@ func handleClientOperData(w http.ResponseWriter, r *http.Request, dev *device.De
 			"policy-data":      buildPolicyData(clients),
 		},
 	}
-	writeJSON(w, resp)
+	writeResponse(w, r, resp, "client-oper-data", yangNS)
 }
 
 func handleCommonOperData(w http.ResponseWriter, r *http.Request, dev *device.Device) {
@@ -36,7 +130,7 @@ func handleCommonOperData(w http.ResponseWriter, r *http.Request, dev *device.De
 	resp := map[string]any{
 		"Cisco-IOS-XE-wireless-client-oper:common-oper-data": buildCommonOperData(clients),
 	}
-	writeJSON(w, resp)
+	writeResponse(w, r, resp, "common-oper-data", yangNS)
 }
 
 func handleDot11OperData(w http.ResponseWriter, r *http.Request, dev *device.Device) {
@@ -44,7 +138,7 @@ func handleDot11OperData(w http.ResponseWriter, r *http.Request, dev *device.Dev
 	resp := map[string]any{
 		"Cisco-IOS-XE-wireless-client-oper:dot11-oper-data": buildDot11OperData(clients),
 	}
-	writeJSON(w, resp)
+	writeResponse(w, r, resp, "dot11-oper-data", yangNS)
 }
 
 func handleTrafficStats(w http.ResponseWriter, r *http.Request, dev *device.Device) {
@@ -52,7 +146,7 @@ func handleTrafficStats(w http.ResponseWriter, r *http.Request, dev *device.Devi
 	resp := map[string]any{
 		"Cisco-IOS-XE-wireless-client-oper:traffic-stats": buildTrafficStats(clients),
 	}
-	writeJSON(w, resp)
+	writeResponse(w, r, resp, "traffic-stats", yangNS)
 }
 
 func handleSisfDbMac(w http.ResponseWriter, r *http.Request, dev *device.Device) {
@@ -60,7 +154,7 @@ func handleSisfDbMac(w http.ResponseWriter, r *http.Request, dev *device.Device)
 	resp := map[string]any{
 		"Cisco-IOS-XE-wireless-client-oper:sisf-db-mac": buildSisfDbMac(clients),
 	}
-	writeJSON(w, resp)
+	writeResponse(w, r, resp, "sisf-db-mac", yangNS)
 }
 
 func handleDcInfo(w http.ResponseWriter, r *http.Request, dev *device.Device) {
@@ -68,7 +162,7 @@ func handleDcInfo(w http.ResponseWriter, r *http.Request, dev *device.Device) {
 	resp := map[string]any{
 		"Cisco-IOS-XE-wireless-client-oper:dc-info": buildDcInfo(clients),
 	}
-	writeJSON(w, resp)
+	writeResponse(w, r, resp, "dc-info", yangNS)
 }
 
 func handlePolicyData(w http.ResponseWriter, r *http.Request, dev *device.Device) {
@@ -76,7 +170,7 @@ func handlePolicyData(w http.ResponseWriter, r *http.Request, dev *device.Device
 	resp := map[string]any{
 		"Cisco-IOS-XE-wireless-client-oper:policy-data": buildPolicyData(clients),
 	}
-	writeJSON(w, resp)
+	writeResponse(w, r, resp, "policy-data", yangNS)
 }
 
 // --- builders ---
