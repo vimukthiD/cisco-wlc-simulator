@@ -15,12 +15,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/vimukthi/cisco-wlc-sim/internal/accesslog"
 	"github.com/vimukthi/cisco-wlc-sim/internal/config"
 	"github.com/vimukthi/cisco-wlc-sim/internal/device"
 )
 
 // Serve starts an HTTPS RESTCONF server for the given device.
-func Serve(dev *device.Device, auth config.Auth) error {
+func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store) error {
 	mux := http.NewServeMux()
 
 	// RESTCONF root
@@ -54,8 +55,8 @@ func Serve(dev *device.Device, auth config.Auth) error {
 		handlePolicyData(w, r, dev)
 	})
 
-	// Wrap with basic auth
-	handler := basicAuth(mux, auth)
+	// Wrap with basic auth and logging
+	handler := logRequests(basicAuth(mux, auth), dev, logs)
 
 	addr := fmt.Sprintf("%s:%d", dev.IP, dev.HTTPSPort)
 	tlsCert, err := generateSelfSignedCert(dev.IP, dev.Hostname)
@@ -89,6 +90,34 @@ func basicAuth(next http.Handler, auth config.Auth) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
+	})
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	code int
+}
+
+func (sw *statusWriter) WriteHeader(code int) {
+	sw.code = code
+	sw.ResponseWriter.WriteHeader(code)
+}
+
+func logRequests(next http.Handler, dev *device.Device, logs *accesslog.Store) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sw := &statusWriter{ResponseWriter: w, code: 200}
+		next.ServeHTTP(sw, r)
+		user, _, _ := r.BasicAuth()
+		logs.Add(accesslog.Entry{
+			DeviceHost: dev.Hostname,
+			DeviceIP:   dev.IP,
+			Type:       "restconf",
+			Source:      r.RemoteAddr,
+			Method:     r.Method,
+			Path:       r.URL.Path,
+			Status:     sw.code,
+			User:       user,
+		})
 	})
 }
 

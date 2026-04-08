@@ -11,13 +11,14 @@ import (
 	"net"
 	"strings"
 
+	"github.com/vimukthi/cisco-wlc-sim/internal/accesslog"
 	"github.com/vimukthi/cisco-wlc-sim/internal/config"
 	"github.com/vimukthi/cisco-wlc-sim/internal/device"
 	"golang.org/x/crypto/ssh"
 )
 
 // Serve starts an SSH server for the given device.
-func Serve(dev *device.Device, auth config.Auth) error {
+func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store) error {
 	sshConfig := &ssh.ServerConfig{
 		PasswordCallback: func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
 			if conn.User() == auth.Username && string(password) == auth.Password {
@@ -47,18 +48,36 @@ func Serve(dev *device.Device, auth config.Auth) error {
 			log.Printf("[%s] SSH accept error: %v", dev.Hostname, err)
 			continue
 		}
-		go handleConnection(conn, sshConfig, dev)
+		go handleConnection(conn, sshConfig, dev, logs)
 	}
 }
 
-func handleConnection(conn net.Conn, config *ssh.ServerConfig, dev *device.Device) {
+func handleConnection(conn net.Conn, config *ssh.ServerConfig, dev *device.Device, logs *accesslog.Store) {
 	defer conn.Close()
+	remoteAddr := conn.RemoteAddr().String()
 
 	sshConn, chans, reqs, err := ssh.NewServerConn(conn, config)
 	if err != nil {
+		logs.Add(accesslog.Entry{
+			DeviceHost: dev.Hostname,
+			DeviceIP:   dev.IP,
+			Type:       "ssh",
+			Source:     remoteAddr,
+			Detail:     "auth failed",
+		})
 		return
 	}
 	defer sshConn.Close()
+
+	user := sshConn.User()
+	logs.Add(accesslog.Entry{
+		DeviceHost: dev.Hostname,
+		DeviceIP:   dev.IP,
+		Type:       "ssh",
+		Source:     remoteAddr,
+		User:       user,
+		Detail:     "session opened",
+	})
 
 	go ssh.DiscardRequests(reqs)
 
@@ -73,12 +92,23 @@ func handleConnection(conn net.Conn, config *ssh.ServerConfig, dev *device.Devic
 			continue
 		}
 
-		go handleSession(channel, requests, dev)
+		go handleSession(channel, requests, dev, logs, user, remoteAddr)
 	}
 }
 
-func handleSession(channel ssh.Channel, requests <-chan *ssh.Request, dev *device.Device) {
+func handleSession(channel ssh.Channel, requests <-chan *ssh.Request, dev *device.Device, logs *accesslog.Store, user, remoteAddr string) {
 	defer channel.Close()
+
+	logCmd := func(cmd string) {
+		logs.Add(accesslog.Entry{
+			DeviceHost: dev.Hostname,
+			DeviceIP:   dev.IP,
+			Type:       "ssh",
+			Source:     remoteAddr,
+			User:       user,
+			Command:    cmd,
+		})
+	}
 
 	// Handle session requests (pty, shell, exec)
 	for req := range requests {
@@ -87,7 +117,7 @@ func handleSession(channel ssh.Channel, requests <-chan *ssh.Request, dev *devic
 			req.Reply(true, nil)
 		case "shell":
 			req.Reply(true, nil)
-			runShell(channel, dev)
+			runShell(channel, dev, logCmd)
 			return
 		case "exec":
 			req.Reply(true, nil)
@@ -96,6 +126,7 @@ func handleSession(channel ssh.Channel, requests <-chan *ssh.Request, dev *devic
 				cmdLen := int(req.Payload[0])<<24 | int(req.Payload[1])<<16 | int(req.Payload[2])<<8 | int(req.Payload[3])
 				if cmdLen <= len(req.Payload)-4 {
 					cmd := string(req.Payload[4 : 4+cmdLen])
+					logCmd(cmd)
 					output := executeCommand(cmd, dev)
 					channel.Write([]byte(output))
 				}
@@ -107,7 +138,7 @@ func handleSession(channel ssh.Channel, requests <-chan *ssh.Request, dev *devic
 	}
 }
 
-func runShell(channel ssh.Channel, dev *device.Device) {
+func runShell(channel ssh.Channel, dev *device.Device, logCmd func(string)) {
 	prompt := dev.Hostname + "#"
 	channel.Write([]byte("\r\n" + prompt))
 
@@ -131,6 +162,7 @@ func runShell(channel ssh.Channel, dev *device.Device) {
 					return
 				}
 				if cmd != "" {
+					logCmd(cmd)
 					output := executeCommand(cmd, dev)
 					channel.Write([]byte(output))
 				}

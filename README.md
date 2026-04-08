@@ -8,6 +8,7 @@ Inspired by [simsnmp](https://github.com/lfbayer/simsnmp) — one IP per simulat
 
 - **RESTCONF API** — `Cisco-IOS-XE-wireless-client-oper:client-oper-data` with all sub-endpoints (common-oper-data, dot11-oper-data, traffic-stats, sisf-db-mac, dc-info, policy-data)
 - **SSH CLI** — Cisco IOS-XE style shell with `show` commands
+- **Web Dashboard** — real-time view of devices, clients, APs, and live access logs
 - **Multiple Devices** — each device gets its own IP, HTTPS port, and SSH port
 - **Virtual IPs** — loopback aliases so each device is individually pingable
 - **YAML Config** — define devices, APs, and clients in a single config file
@@ -21,8 +22,11 @@ go build -o wlcsim ./cmd/wlcsim/
 # Set up virtual IPs (requires sudo)
 sudo ./wlcsim -setup-ips -config configs/devices.yaml
 
-# Run the simulator
+# Run the simulator (dashboard on port 8080 by default)
 ./wlcsim -config configs/devices.yaml
+
+# Open the dashboard
+open http://localhost:8080
 ```
 
 ## Usage
@@ -79,6 +83,27 @@ ssh -p 2221 admin@10.99.0.1
 #   show wlan summary
 ```
 
+### Web Dashboard
+
+The dashboard runs on `http://localhost:8080` by default (configurable with `-dashboard-port`).
+
+```bash
+# Custom port
+./wlcsim -config configs/devices.yaml -dashboard-port 9090
+```
+
+The dashboard provides:
+- **Device overview** — all simulated WLCs with IP, model, version, AP/client counts
+- **Client detail** — per-device table with MAC, IP, SSID, RSSI signal bars, speed, traffic
+- **AP detail** — access points with model, client count, served SSIDs
+- **Device config** — connection info (RESTCONF URL, SSH command)
+- **Live access logs** — real-time stream of all RESTCONF and SSH requests via SSE
+
+The dashboard also exposes JSON API endpoints:
+- `GET /api/devices` — all device configurations
+- `GET /api/logs` — recent access log entries
+- `GET /api/logs/stream` — SSE stream of new log entries
+
 ## Configuration
 
 All devices are defined in `configs/devices.yaml`:
@@ -108,20 +133,33 @@ devices:
 
 See [configs/devices.yaml](configs/devices.yaml) for a full example with two devices.
 
+## Command-Line Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-config` | `configs/devices.yaml` | Path to devices config file |
+| `-dashboard-port` | `8080` | Web dashboard HTTP port |
+| `-setup-ips` | `false` | Add virtual IP aliases (requires sudo) |
+| `-teardown-ips` | `false` | Remove virtual IP aliases (requires sudo) |
+
 ## Architecture
 
 ```
-cmd/wlcsim/main.go        — Entry point, flag parsing, signal handling
+cmd/wlcsim/main.go              — Entry point, flag parsing, signal handling
 internal/
-  config/config.go         — YAML config loading with defaults
-  device/device.go         — Device, AP, Client data models
+  config/config.go               — YAML config loading with defaults
+  device/device.go               — Device, AP, Client data models
+  accesslog/accesslog.go         — Thread-safe access log store with SSE pub/sub
   restconf/
-    server.go              — HTTPS server with self-signed TLS, basic auth
-    handlers.go            — RESTCONF endpoint handlers (YANG-format JSON)
-  sshsim/server.go         — SSH server with Cisco IOS-XE CLI simulation
-  network/setup.go         — Virtual IP management (macOS/Linux)
+    server.go                    — HTTPS server with self-signed TLS, basic auth, request logging
+    handlers.go                  — RESTCONF endpoint handlers (YANG-format JSON)
+  sshsim/server.go               — SSH server with Cisco IOS-XE CLI simulation, command logging
+  dashboard/
+    server.go                    — Dashboard HTTP server with JSON API and SSE
+    static/index.html            — Embedded single-page dashboard (HTML/CSS/JS)
+  network/setup.go               — Virtual IP management (macOS/Linux)
 configs/
-  devices.yaml             — Sample config with 2 WLCs, 4 APs, 7 clients
+  devices.yaml                   — Sample config with 2 WLCs, 4 APs, 7 clients
 ```
 
 ### How It Works
@@ -130,6 +168,8 @@ configs/
 2. **Per-device servers**: Each device spawns its own HTTPS and SSH server, bound to its specific IP
 3. **RESTCONF responses**: Built from the YAML config, formatted to match the real `Cisco-IOS-XE-wireless-client-oper` YANG model
 4. **SSH CLI**: Interactive shell that parses commands and returns formatted output matching real WLC CLI
+5. **Access logging**: All RESTCONF requests and SSH sessions/commands are recorded in a shared log store
+6. **Dashboard**: Serves an embedded web UI on a separate HTTP port; live log updates via Server-Sent Events (SSE)
 
 ### Adding a New Device
 
