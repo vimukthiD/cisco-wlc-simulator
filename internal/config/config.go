@@ -16,8 +16,8 @@ type Config struct {
 
 // Auth holds credentials for RESTCONF and SSH.
 type Auth struct {
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
+	Username string `yaml:"username" json:"username"`
+	Password string `yaml:"password" json:"password"`
 }
 
 // Load reads and parses the YAML config file.

@@ -303,12 +303,17 @@
 
 <script>
 let devices = [];
+let auth = {};
 let selectedDevice = null;
 let logCount = 0;
 
 async function loadDevices() {
-  const res = await fetch('/api/devices');
-  devices = await res.json();
+  const [devRes, authRes] = await Promise.all([
+    fetch('/api/devices'),
+    fetch('/api/auth'),
+  ]);
+  devices = await devRes.json();
+  auth = await authRes.json();
   renderStats();
   renderDeviceList();
   if (devices.length > 0) selectDevice(0);
@@ -428,6 +433,7 @@ function renderDetail() {
       }).join('')}</tbody></table>`;
 
   // Config tab
+  const basicToken = btoa(auth.username + ':' + auth.password);
   document.getElementById('tab-config').innerHTML = `
     <div style="padding:16px">
       <table>
@@ -438,8 +444,22 @@ function renderDetail() {
         <tr><td style="color:var(--text-dim)">Model</td><td>${d.model}</td></tr>
         <tr><td style="color:var(--text-dim)">Serial</td><td>${d.serial || '-'}</td></tr>
         <tr><td style="color:var(--text-dim)">IOS-XE Version</td><td>${d.version}</td></tr>
-        <tr><td style="color:var(--text-dim)">RESTCONF URL</td><td><code>https://${d.ip}:${d.https_port}/restconf/data/...</code></td></tr>
-        <tr><td style="color:var(--text-dim)">SSH</td><td><code>ssh -p ${d.ssh_port} admin@${d.ip}</code></td></tr>
+      </table>
+      <h3 style="margin:20px 0 10px;font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">Credentials</h3>
+      <table>
+        <tr><td style="color:var(--text-dim)">Username</td><td><code>${auth.username}</code></td></tr>
+        <tr><td style="color:var(--text-dim)">Password</td><td><code>${auth.password}</code></td></tr>
+      </table>
+      <h3 style="margin:20px 0 10px;font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">RESTCONF</h3>
+      <table>
+        <tr><td style="color:var(--text-dim)">URL</td><td><code>https://${d.ip}:${d.https_port}/restconf/data/Cisco-IOS-XE-wireless-client-oper:client-oper-data</code></td></tr>
+        <tr><td style="color:var(--text-dim)">Auth Header</td><td><code>Authorization: Basic ${basicToken}</code></td></tr>
+        <tr><td style="color:var(--text-dim)">curl</td><td><code style="word-break:break-all">curl -sk -u ${auth.username}:${auth.password} https://${d.ip}:${d.https_port}/restconf/data/Cisco-IOS-XE-wireless-client-oper:client-oper-data</code></td></tr>
+      </table>
+      <h3 style="margin:20px 0 10px;font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">SSH</h3>
+      <table>
+        <tr><td style="color:var(--text-dim)">Command</td><td><code>ssh -p ${d.ssh_port} ${auth.username}@${d.ip}</code></td></tr>
+        <tr><td style="color:var(--text-dim)">Password</td><td><code>${auth.password}</code></td></tr>
       </table>
     </div>`;
 }

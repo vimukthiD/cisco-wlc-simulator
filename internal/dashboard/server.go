@@ -19,6 +19,10 @@ func Serve(port int, cfg *config.Config, logs *accesslog.Store) error {
 	mux := http.NewServeMux()
 
 	// API endpoints
+	mux.HandleFunc("/api/auth", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, cfg.Auth)
+	})
+
 	mux.HandleFunc("/api/devices", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, cfg.Devices)
 	})
