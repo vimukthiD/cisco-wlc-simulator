@@ -173,6 +173,40 @@ func handlePolicyData(w http.ResponseWriter, r *http.Request, dev *device.Device
 	writeResponse(w, r, resp, "policy-data", yangNS)
 }
 
+const apYangNS = "http://cisco.com/ns/yang/Cisco-IOS-XE-wireless-access-point-oper"
+
+func handleAPOperData(w http.ResponseWriter, r *http.Request, dev *device.Device) {
+	resp := map[string]any{
+		"Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data": map[string]any{
+			"capwap-data":     buildCapwapData(dev),
+			"ap-name-mac-map": buildAPNameMacMap(dev),
+			"radio-oper-data": buildRadioOperData(dev),
+		},
+	}
+	writeResponse(w, r, resp, "access-point-oper-data", apYangNS)
+}
+
+func handleCapwapData(w http.ResponseWriter, r *http.Request, dev *device.Device) {
+	resp := map[string]any{
+		"Cisco-IOS-XE-wireless-access-point-oper:capwap-data": buildCapwapData(dev),
+	}
+	writeResponse(w, r, resp, "capwap-data", apYangNS)
+}
+
+func handleAPNameMacMap(w http.ResponseWriter, r *http.Request, dev *device.Device) {
+	resp := map[string]any{
+		"Cisco-IOS-XE-wireless-access-point-oper:ap-name-mac-map": buildAPNameMacMap(dev),
+	}
+	writeResponse(w, r, resp, "ap-name-mac-map", apYangNS)
+}
+
+func handleRadioOperData(w http.ResponseWriter, r *http.Request, dev *device.Device) {
+	resp := map[string]any{
+		"Cisco-IOS-XE-wireless-access-point-oper:radio-oper-data": buildRadioOperData(dev),
+	}
+	writeResponse(w, r, resp, "radio-oper-data", apYangNS)
+}
+
 // --- builders ---
 
 func assocTime(c device.Client) string {
@@ -384,4 +418,105 @@ func orDefault(val, def string) string {
 		return val
 	}
 	return def
+}
+
+// --- AP oper data builders ---
+
+func buildCapwapData(dev *device.Device) []map[string]any {
+	var result []map[string]any
+	for _, ap := range dev.APs {
+		clientCount := len(ap.Clients)
+		model := ap.Model
+		if model == "" {
+			model = "C9120AXI-B"
+		}
+		entry := map[string]any{
+			"wtp-mac":               ap.MAC,
+			"ap-name":               ap.Name,
+			"device-detail": map[string]any{
+				"static-info": map[string]any{
+					"board-data": map[string]any{
+						"wtp-model-no":  model,
+						"wtp-serial-no": "",
+					},
+					"ap-model-name": model,
+				},
+				"ap-ip-addr":        dev.IP,
+				"wtp-version":       dev.Version,
+			},
+			"tag-info": map[string]any{
+				"site-tag": map[string]any{
+					"site-tag-name": "default-site-tag",
+				},
+				"policy-tag": map[string]any{
+					"policy-tag-name": "default-policy-tag",
+				},
+				"rf-tag": map[string]any{
+					"rf-tag-name": "default-rf-tag",
+				},
+			},
+			"admin-state":           true,
+			"client-count":          clientCount,
+			"ap-operation-state":    "ap-state-registered",
+			"ap-join-state":         "ap-join-state-joined",
+		}
+		result = append(result, entry)
+	}
+	return result
+}
+
+func buildAPNameMacMap(dev *device.Device) []map[string]any {
+	var result []map[string]any
+	for _, ap := range dev.APs {
+		result = append(result, map[string]any{
+			"wtp-name": ap.Name,
+			"wtp-mac":  ap.MAC,
+		})
+	}
+	return result
+}
+
+func buildRadioOperData(dev *device.Device) []map[string]any {
+	var result []map[string]any
+	for _, ap := range dev.APs {
+		// Slot 0: 2.4 GHz
+		result = append(result, map[string]any{
+			"wtp-mac":           ap.MAC,
+			"radio-slot-id":     0,
+			"slot-id":           0,
+			"radio-type":        "radio-type-dot11bg",
+			"oper-state":        true,
+			"radio-mode":        "radio-mode-local",
+			"current-channel":   6,
+			"current-tx-power":  17,
+			"channel-width":     "cw-20-mhz",
+			"station-count":     0,
+			"utilization":       10,
+			"noise":             -95,
+		})
+		// Slot 1: 5 GHz
+		clientCount := 0
+		ch := 36
+		for _, c := range ap.Clients {
+			if c.Channel >= 36 {
+				clientCount++
+				ch = c.Channel
+			}
+		}
+		result = append(result, map[string]any{
+			"wtp-mac":           ap.MAC,
+			"radio-slot-id":     1,
+			"slot-id":           1,
+			"radio-type":        "radio-type-dot11a",
+			"oper-state":        true,
+			"radio-mode":        "radio-mode-local",
+			"current-channel":   ch,
+			"current-tx-power":  20,
+			"channel-width":     "cw-80-mhz",
+			"station-count":     clientCount,
+			"utilization":       25,
+			"noise":             -92,
+		})
+	}
+	return result
 }

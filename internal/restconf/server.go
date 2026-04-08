@@ -55,6 +55,20 @@ func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store) error {
 		handlePolicyData(w, r, dev)
 	})
 
+	// AP oper data
+	mux.HandleFunc("/restconf/data/Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data", func(w http.ResponseWriter, r *http.Request) {
+		handleAPOperData(w, r, dev)
+	})
+	mux.HandleFunc("/restconf/data/Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data/capwap-data", func(w http.ResponseWriter, r *http.Request) {
+		handleCapwapData(w, r, dev)
+	})
+	mux.HandleFunc("/restconf/data/Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data/ap-name-mac-map", func(w http.ResponseWriter, r *http.Request) {
+		handleAPNameMacMap(w, r, dev)
+	})
+	mux.HandleFunc("/restconf/data/Cisco-IOS-XE-wireless-access-point-oper:access-point-oper-data/radio-oper-data", func(w http.ResponseWriter, r *http.Request) {
+		handleRadioOperData(w, r, dev)
+	})
+
 	// Wrap with basic auth and logging
 	handler := logRequests(basicAuth(mux, auth), dev, logs)
 
