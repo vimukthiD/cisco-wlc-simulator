@@ -86,26 +86,38 @@ func (m *Manager) run(dev *device.Device, port int, ready chan struct{}) {
 		} else {
 			config = dev.RunningConfig()
 		}
+		source := ""
+		if t, ok := rf.(tftp.OutgoingTransfer); ok {
+			addr := t.RemoteAddr()
+			source = addr.String()
+			t.SetSize(int64(len(config)))
+		}
 		m.logs.Add(accesslog.Entry{
 			DeviceHost: dev.Hostname,
 			DeviceIP:   dev.IP,
 			Type:       "tftp",
 			Method:     "READ",
 			Path:       filename,
+			Source:     source,
 		})
-		rf.(tftp.OutgoingTransfer).SetSize(int64(len(config)))
 		_, err := rf.ReadFrom(strings.NewReader(config))
 		return err
 	}
 
 	writeHandler := func(filename string, wt io.WriterTo) error {
 		activity()
+		source := ""
+		if t, ok := wt.(tftp.IncomingTransfer); ok {
+			addr := t.RemoteAddr()
+			source = addr.String()
+		}
 		m.logs.Add(accesslog.Entry{
 			DeviceHost: dev.Hostname,
 			DeviceIP:   dev.IP,
 			Type:       "tftp",
 			Method:     "WRITE",
 			Path:       filename,
+			Source:     source,
 		})
 		_, err := wt.WriteTo(io.Discard)
 		return err

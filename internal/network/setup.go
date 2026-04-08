@@ -19,7 +19,7 @@ func SetupIPs(devices []device.Device) error {
 			log.Printf("  %s (%s) already exists, skipping", dev.IP, dev.Hostname)
 			continue
 		}
-		if err := addIP(dev.IP); err != nil {
+		if err := AddIP(dev.IP); err != nil {
 			return fmt.Errorf("add IP %s: %w", dev.IP, err)
 		}
 		log.Printf("  Added %s (%s)", dev.IP, dev.Hostname)
@@ -30,7 +30,7 @@ func SetupIPs(devices []device.Device) error {
 // TeardownIPs removes virtual IP aliases for each device.
 func TeardownIPs(devices []device.Device) {
 	for _, dev := range devices {
-		if err := removeIP(dev.IP); err != nil {
+		if err := RemoveIP(dev.IP); err != nil {
 			log.Printf("  Warning: failed to remove %s: %v", dev.IP, err)
 		} else {
 			log.Printf("  Removed %s (%s)", dev.IP, dev.Hostname)
@@ -38,7 +38,8 @@ func TeardownIPs(devices []device.Device) {
 	}
 }
 
-func addIP(ip string) error {
+// AddIP adds a single virtual IP alias to the loopback interface.
+func AddIP(ip string) error {
 	switch runtime.GOOS {
 	case "darwin":
 		return exec.Command("ifconfig", "lo0", "alias", ip).Run()
@@ -49,7 +50,8 @@ func addIP(ip string) error {
 	}
 }
 
-func removeIP(ip string) error {
+// RemoveIP removes a single virtual IP alias from the loopback interface.
+func RemoveIP(ip string) error {
 	switch runtime.GOOS {
 	case "darwin":
 		return exec.Command("ifconfig", "lo0", "-alias", ip).Run()

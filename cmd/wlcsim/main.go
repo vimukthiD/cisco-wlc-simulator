@@ -12,17 +12,14 @@ import (
 	"github.com/vimukthi/cisco-wlc-sim/internal/config"
 	"github.com/vimukthi/cisco-wlc-sim/internal/dashboard"
 	"github.com/vimukthi/cisco-wlc-sim/internal/network"
-	"github.com/vimukthi/cisco-wlc-sim/internal/restconf"
-	"github.com/vimukthi/cisco-wlc-sim/internal/snmp"
-	"github.com/vimukthi/cisco-wlc-sim/internal/sshsim"
-	"github.com/vimukthi/cisco-wlc-sim/internal/tftpsim"
+	"github.com/vimukthi/cisco-wlc-sim/internal/simulator"
 )
 
 func main() {
 	configPath := flag.String("config", "configs/devices.yaml", "path to devices config file")
 	dashPort := flag.Int("dashboard-port", 8080, "web dashboard port")
-	setupIPs := flag.Bool("setup-ips", false, "add virtual IP aliases (requires root/sudo)")
-	teardownIPs := flag.Bool("teardown-ips", false, "remove virtual IP aliases (requires root/sudo)")
+	setupOnly := flag.Bool("setup-ips", false, "only add virtual IP aliases, then exit")
+	teardownOnly := flag.Bool("teardown-ips", false, "only remove virtual IP aliases, then exit")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -30,19 +27,26 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	if *teardownIPs {
+	// Standalone IP management commands
+	if *teardownOnly {
 		log.Println("Removing virtual IP aliases...")
 		network.TeardownIPs(cfg.Devices)
 		log.Println("Done.")
 		return
 	}
-
-	if *setupIPs {
+	if *setupOnly {
 		log.Println("Setting up virtual IP aliases...")
 		if err := network.SetupIPs(cfg.Devices); err != nil {
 			log.Fatalf("Failed to setup IPs: %v", err)
 		}
-		log.Println("Virtual IPs configured.")
+		log.Println("Done.")
+		return
+	}
+
+	// Set up virtual IPs automatically
+	log.Println("Setting up virtual IP aliases...")
+	if err := network.SetupIPs(cfg.Devices); err != nil {
+		log.Printf("Warning: IP setup failed (run with sudo for privileged ports): %v", err)
 	}
 
 	logs := accesslog.NewStore(10000)
@@ -51,42 +55,13 @@ func main() {
 		cfg.Devices[i].StartTime = now
 	}
 
-	// Start RESTCONF HTTPS servers (one per device)
-	for i := range cfg.Devices {
-		dev := &cfg.Devices[i]
-		go func() {
-			if err := restconf.Serve(dev, cfg.Auth, logs); err != nil {
-				log.Printf("[%s] RESTCONF server error: %v", dev.Hostname, err)
-			}
-		}()
-	}
-
-	// TFTP manager — starts TFTP servers on-demand when triggered by SSH commands
-	tftpMgr := tftpsim.NewManager(logs)
-
-	// Start SSH servers (one per device)
-	for i := range cfg.Devices {
-		dev := &cfg.Devices[i]
-		go func() {
-			if err := sshsim.Serve(dev, cfg.Auth, logs, tftpMgr); err != nil {
-				log.Printf("[%s] SSH server error: %v", dev.Hostname, err)
-			}
-		}()
-	}
-
-	// Start SNMP agents (one per device)
-	for i := range cfg.Devices {
-		dev := &cfg.Devices[i]
-		go func() {
-			if err := snmp.Serve(dev, cfg.Auth, logs); err != nil {
-				log.Printf("[%s] SNMP agent error: %v", dev.Hostname, err)
-			}
-		}()
-	}
+	// Create simulator and start all device servers
+	sim := simulator.New(cfg, logs, "")
+	sim.StartAll()
 
 	// Start web dashboard
 	go func() {
-		if err := dashboard.Serve(*dashPort, cfg, logs); err != nil {
+		if err := dashboard.Serve(*dashPort, sim, logs); err != nil {
 			log.Printf("Dashboard server error: %v", err)
 		}
 	}()
@@ -97,8 +72,13 @@ func main() {
 		log.Printf("  %s @ %s (HTTPS:%d, SSH:%d, SNMP:%d, TFTP:on-demand)", dev.Hostname, dev.IP, dev.HTTPSPort, dev.SSHPort, dev.SNMPPort)
 	}
 
+	// Wait for shutdown signal, then clean up IPs
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
+
 	log.Println("Shutting down...")
+	log.Println("Removing virtual IP aliases...")
+	network.TeardownIPs(sim.Devices())
+	log.Println("Done.")
 }

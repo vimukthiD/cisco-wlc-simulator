@@ -21,6 +21,12 @@
     --cyan: #06b6d4;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* Themed scrollbars */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+  * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     background: var(--bg);
@@ -289,7 +295,7 @@
   }
   .tab:hover { color: var(--text); }
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .tab-content { display: none; }
+  .tab-content { display: none; overflow-x: auto; }
   .tab-content.active { display: block; }
 
   .empty-state {
@@ -297,6 +303,102 @@
     padding: 40px;
     color: var(--text-dim);
   }
+  .add-btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .add-btn:hover { opacity: 0.9; }
+  .del-btn {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-left: 6px;
+    line-height: 1;
+    vertical-align: middle;
+  }
+  .del-btn:hover { color: var(--red); border-color: var(--red); }
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+    justify-content: center;
+    align-items: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    width: 420px;
+    max-width: 90vw;
+  }
+  .modal h3 {
+    margin: 0 0 16px;
+    font-size: 16px;
+  }
+  .modal label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: 10px 0 4px;
+  }
+  .modal input {
+    width: 100%;
+    padding: 7px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 13px;
+    box-sizing: border-box;
+  }
+  .modal input:focus { border-color: var(--accent); outline: none; }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .modal-actions button {
+    padding: 7px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+  }
+  .btn-cancel { background: var(--surface2); color: var(--text); }
+  .btn-submit { background: var(--accent); color: white; border-color: var(--accent); font-weight: 600; }
+  .modal-error { color: var(--red); font-size: 12px; margin-top: 8px; display: none; }
+  .auto-field {
+    display: flex;
+    gap: 4px;
+  }
+  .auto-field input { flex: 1; }
+  .refresh-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 4px;
+    width: 32px;
+    cursor: pointer;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .refresh-btn:hover { color: var(--accent); border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -363,21 +465,22 @@
     <div class="card">
       <div class="card-header">
         <h2>Devices</h2>
+        <button class="add-btn" onclick="showAddDevice()">+ Add Device</button>
       </div>
       <div class="card-body" id="deviceList"></div>
     </div>
 
     <div class="card">
       <div class="tabs">
-        <div class="tab active" data-tab="clients">Clients</div>
-        <div class="tab" data-tab="aps">Access Points</div>
+        <div class="tab active" data-tab="aps">Access Points</div>
+        <div class="tab" data-tab="clients">Clients</div>
         <div class="tab" data-tab="config">Config</div>
       </div>
-      <div class="tab-content active" id="tab-clients">
-        <div class="empty-state">Select a device to view clients</div>
-      </div>
-      <div class="tab-content" id="tab-aps">
+      <div class="tab-content active" id="tab-aps">
         <div class="empty-state">Select a device to view APs</div>
+      </div>
+      <div class="tab-content" id="tab-clients">
+        <div class="empty-state">Select a device to view clients</div>
       </div>
       <div class="tab-content" id="tab-config">
         <div class="empty-state">Select a device to view config</div>
@@ -392,6 +495,120 @@
     </div>
     <div class="log-container" id="logContainer">
       <div class="empty-state">Waiting for requests...</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="addDeviceModal">
+  <div class="modal">
+    <h3>Add New Device</h3>
+    <label>Hostname *</label>
+    <input id="addHostname" placeholder="WLC-NEW">
+    <label>IP Address *</label>
+    <div class="auto-field">
+      <input id="addIP" placeholder="10.99.0.3">
+      <button class="refresh-btn" onclick="document.getElementById('addIP').value=genDeviceIP()" title="Generate">&#x21bb;</button>
+    </div>
+    <label>Model</label>
+    <input id="addModel" placeholder="C9800-CL-K9" value="C9800-CL-K9">
+    <label>Serial</label>
+    <div class="auto-field">
+      <input id="addSerial" placeholder="FCW0000NEW">
+      <button class="refresh-btn" onclick="document.getElementById('addSerial').value=genSerial()" title="Generate">&#x21bb;</button>
+    </div>
+    <label>Version</label>
+    <input id="addVersion" placeholder="17.12.1" value="17.12.1">
+    <div class="modal-error" id="addError"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="hideAddDevice()">Cancel</button>
+      <button class="btn-submit" onclick="submitAddDevice()">Add Device</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="addAPModal">
+  <div class="modal">
+    <h3>Add Access Point</h3>
+    <label>AP Name *</label>
+    <input id="addAPName" placeholder="AP-Floor2-West">
+    <label>MAC Address *</label>
+    <div class="auto-field">
+      <input id="addAPMac" placeholder="00:3a:7d:12:03:00">
+      <button class="refresh-btn" onclick="document.getElementById('addAPMac').value=genAPMac()" title="Generate">&#x21bb;</button>
+    </div>
+    <label>Model</label>
+    <input id="addAPModel" placeholder="C9120AXI-B" value="C9120AXI-B">
+    <label>SSIDs (comma-separated)</label>
+    <input id="addAPSSIDs" placeholder="Corporate-WiFi, Guest-WiFi">
+    <div class="modal-error" id="addAPError"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('addAPModal').classList.remove('open')">Cancel</button>
+      <button class="btn-submit" onclick="submitAddAP()">Add AP</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="editAPModal">
+  <div class="modal">
+    <h3>Edit AP SSIDs</h3>
+    <input type="hidden" id="editAPDeviceIP">
+    <input type="hidden" id="editAPName">
+    <label>AP: <strong id="editAPLabel"></strong></label>
+    <label>SSIDs (comma-separated)</label>
+    <input id="editAPSSIDs" placeholder="Corporate-WiFi, Guest-WiFi">
+    <div class="modal-error" id="editAPError"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('editAPModal').classList.remove('open')">Cancel</button>
+      <button class="btn-submit" onclick="submitEditAP()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="addClientModal">
+  <div class="modal">
+    <h3>Add Wireless Client</h3>
+    <label>AP *</label>
+    <select id="addClientAP" onchange="updateClientSSIDOptions()" style="width:100%;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px"></select>
+    <label>SSID *</label>
+    <select id="addClientSSID" style="width:100%;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px"></select>
+    <label>Client MAC *</label>
+    <div class="auto-field">
+      <input id="addClientMAC" placeholder="aa:bb:cc:dd:ee:01">
+      <button class="refresh-btn" onclick="document.getElementById('addClientMAC').value=genClientMac()" title="Generate">&#x21bb;</button>
+    </div>
+    <label>IPv4</label>
+    <div class="auto-field">
+      <input id="addClientIPv4" placeholder="10.10.50.100">
+      <button class="refresh-btn" onclick="document.getElementById('addClientIPv4').value=genClientIP()" title="Generate">&#x21bb;</button>
+    </div>
+    <label>Username</label>
+    <input id="addClientUser" placeholder="jsmith">
+    <label>RSSI (dBm)</label>
+    <input id="addClientRSSI" type="number" value="-55" min="-90" max="-20">
+    <label>VLAN</label>
+    <input id="addClientVLAN" type="number" value="50">
+    <div class="modal-error" id="addClientError"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('addClientModal').classList.remove('open')">Cancel</button>
+      <button class="btn-submit" onclick="submitAddClient()">Add Client</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="moveClientModal">
+  <div class="modal">
+    <h3>Move Client</h3>
+    <input type="hidden" id="moveClientDeviceIP">
+    <input type="hidden" id="moveClientMAC">
+    <label>Client: <strong><code id="moveClientLabel"></code></strong></label>
+    <label>Target AP *</label>
+    <select id="moveClientAP" onchange="updateMoveSSIDOptions()" style="width:100%;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px"></select>
+    <label>SSID *</label>
+    <select id="moveClientSSID" style="width:100%;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px"></select>
+    <div class="modal-error" id="moveClientError"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('moveClientModal').classList.remove('open')">Cancel</button>
+      <button class="btn-submit" onclick="submitMoveClient()">Move</button>
     </div>
   </div>
 </div>
@@ -441,7 +658,10 @@ function renderDeviceList() {
       <div class="device ${selectedDevice === i ? 'active' : ''}" onclick="selectDevice(${i})">
         <div class="device-header">
           <span class="device-name">${d.hostname}</span>
-          <span class="badge badge-green">Online</span>
+          <span>
+            <span class="badge badge-green">Online</span>
+            <button class="del-btn" onclick="event.stopPropagation();deleteDevice('${d.ip}','${d.hostname}')" title="Remove device">x</button>
+          </span>
         </div>
         <div class="device-meta">
           <span><strong>${d.ip}</strong> :${d.https_port}</span>
@@ -489,12 +709,15 @@ function renderDetail() {
   });
 
   // Clients tab
-  document.getElementById('tab-clients').innerHTML = allClients.length === 0
+  const clientAddBtn = d.aps && d.aps.length > 0
+    ? `<div style="padding:8px 12px;border-bottom:1px solid var(--border)"><button class="add-btn" onclick="showAddClient()">+ Add Client</button></div>`
+    : '';
+  document.getElementById('tab-clients').innerHTML = clientAddBtn + (allClients.length === 0
     ? '<div class="empty-state">No clients connected</div>'
     : `<table>
       <thead><tr>
         <th>MAC</th><th>IPv4</th><th>Username</th><th>AP</th><th>SSID</th>
-        <th>Channel</th><th>RSSI</th><th>Speed</th><th>Traffic</th><th>State</th>
+        <th>Channel</th><th>RSSI</th><th>Speed</th><th>Traffic</th><th></th>
       </tr></thead>
       <tbody>${allClients.map(c => `<tr>
         <td><code>${c.mac}</code></td>
@@ -509,24 +732,32 @@ function renderDetail() {
         </td>
         <td>${c.speed} Mbps</td>
         <td>${formatBytes(c.bytes_rx + c.bytes_tx)}</td>
-        <td><span class="badge badge-green">Run</span></td>
-      </tr>`).join('')}</tbody></table>`;
+        <td>
+          <button class="add-btn" style="font-size:11px;padding:2px 8px" onclick="showMoveClient('${d.ip}','${c.mac}','${c.ap_name}','${c.ssid || ''}')">Move</button>
+          <button class="del-btn" style="font-size:11px" onclick="event.stopPropagation();deleteClient('${d.ip}','${c.mac}')" title="Remove client">x</button>
+        </td>
+      </tr>`).join('')}</tbody></table>`);
 
   // APs tab
-  document.getElementById('tab-aps').innerHTML = !d.aps || d.aps.length === 0
+  const apAddBtn = `<div style="padding:8px 12px;border-bottom:1px solid var(--border)"><button class="add-btn" onclick="showAddAP()">+ Add AP</button></div>`;
+  document.getElementById('tab-aps').innerHTML = apAddBtn + (!d.aps || d.aps.length === 0
     ? '<div class="empty-state">No APs configured</div>'
     : `<table>
-      <thead><tr><th>Name</th><th>MAC</th><th>Model</th><th>Clients</th><th>SSIDs</th></tr></thead>
+      <thead><tr><th>Name</th><th>MAC</th><th>Model</th><th>Clients</th><th>SSIDs</th><th></th></tr></thead>
       <tbody>${d.aps.map(ap => {
-        const ssids = [...new Set((ap.clients || []).map(c => c.ssid))];
+        const ssids = (ap.ssids || []);
         return `<tr>
           <td><strong>${ap.name}</strong></td>
           <td><code>${ap.mac}</code></td>
           <td>${ap.model || 'C9120AXI-B'}</td>
           <td>${(ap.clients || []).length}</td>
-          <td>${ssids.map(s => `<span class="badge badge-blue">${s}</span>`).join(' ')}</td>
+          <td>${ssids.map(s => `<span class="badge badge-blue">${s}</span>`).join(' ') || '<span style="color:var(--text-dim)">none</span>'}</td>
+          <td>
+            <button class="add-btn" style="font-size:11px;padding:2px 8px" onclick='showEditAP("${d.ip}","${ap.name}",${JSON.stringify(ssids)})'>Edit SSIDs</button>
+            <button class="del-btn" style="font-size:11px" onclick="event.stopPropagation();deleteAP('${d.ip}','${ap.name}')" title="Remove AP">x</button>
+          </td>
         </tr>`;
-      }).join('')}</tbody></table>`;
+      }).join('')}</tbody></table>`);
 
   // Config tab
   const basicToken = btoa(auth.username + ':' + auth.password);
@@ -705,6 +936,387 @@ async function pollSystem() {
     sysBar.style.width = sysPct + '%';
     sysBar.style.background = memBarColor(sysPct);
   } catch (e) {}
+}
+
+// --- Auto-generation helpers ---
+
+function hex2(n) { return n.toString(16).padStart(2, '0'); }
+function rByte() { return Math.floor(Math.random() * 256); }
+
+function usedIPs() {
+  const ips = new Set();
+  devices.forEach(d => {
+    ips.add(d.ip);
+    (d.aps || []).forEach(ap => (ap.clients || []).forEach(c => { if (c.ipv4) ips.add(c.ipv4); }));
+  });
+  return ips;
+}
+
+function usedMACs() {
+  const macs = new Set();
+  devices.forEach(d => (d.aps || []).forEach(ap => {
+    macs.add(ap.mac.toLowerCase());
+    (ap.clients || []).forEach(c => macs.add(c.mac.toLowerCase()));
+  }));
+  return macs;
+}
+
+function usedSerials() {
+  const s = new Set();
+  devices.forEach(d => s.add(d.serial));
+  return s;
+}
+
+function genDeviceIP() {
+  const used = usedIPs();
+  for (let c = 0; c < 255; c++) {
+    for (let d = 1; d < 255; d++) {
+      const ip = `10.99.${c}.${d}`;
+      if (!used.has(ip)) return ip;
+    }
+  }
+  return '10.99.0.1';
+}
+
+function genSerial() {
+  const used = usedSerials();
+  for (let i = 0; i < 100; i++) {
+    const s = 'FCW' + String(Math.floor(Math.random() * 9000) + 1000) + String.fromCharCode(65 + rByte() % 26) + String.fromCharCode(65 + rByte() % 26) + hex2(rByte()).toUpperCase();
+    if (!used.has(s)) return s;
+  }
+  return 'FCW0000XX00';
+}
+
+function genAPMac() {
+  const used = usedMACs();
+  for (let i = 0; i < 100; i++) {
+    const m = `00:3a:7d:${hex2(rByte())}:${hex2(rByte())}:00`;
+    if (!used.has(m)) return m;
+  }
+  return '00:3a:7d:00:00:00';
+}
+
+function genClientMac() {
+  const used = usedMACs();
+  for (let i = 0; i < 100; i++) {
+    const m = `${hex2(0xaa)}:${hex2(rByte())}:${hex2(rByte())}:${hex2(rByte())}:${hex2(rByte())}:${hex2(rByte())}`;
+    if (!used.has(m)) return m;
+  }
+  return 'aa:00:00:00:00:01';
+}
+
+function genClientIP() {
+  const used = usedIPs();
+  for (let c = 10; c < 255; c++) {
+    for (let d = 1; d < 255; d++) {
+      const ip = `10.10.${c}.${d}`;
+      if (!used.has(ip)) return ip;
+    }
+  }
+  return '10.10.10.1';
+}
+
+// --- Modal show functions ---
+
+function showAddDevice() {
+  document.getElementById('addIP').value = genDeviceIP();
+  document.getElementById('addSerial').value = genSerial();
+  document.getElementById('addHostname').value = 'WLC-' + String(devices.length + 1).padStart(2, '0');
+  document.getElementById('addDeviceModal').classList.add('open');
+  document.getElementById('addHostname').focus();
+  document.getElementById('addError').style.display = 'none';
+}
+
+function hideAddDevice() {
+  document.getElementById('addDeviceModal').classList.remove('open');
+}
+
+async function submitAddDevice() {
+  const errEl = document.getElementById('addError');
+  errEl.style.display = 'none';
+  const dev = {
+    hostname: document.getElementById('addHostname').value.trim(),
+    ip: document.getElementById('addIP').value.trim(),
+    model: document.getElementById('addModel').value.trim(),
+    serial: document.getElementById('addSerial').value.trim(),
+    version: document.getElementById('addVersion').value.trim(),
+    aps: [],
+  };
+  if (!dev.hostname || !dev.ip) {
+    errEl.textContent = 'Hostname and IP are required';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await fetch('/api/devices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dev),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      try { errEl.textContent = JSON.parse(body).error; } catch { errEl.textContent = body; }
+      errEl.style.display = 'block';
+      return;
+    }
+    hideAddDevice();
+    // Clear form
+    document.getElementById('addHostname').value = '';
+    document.getElementById('addIP').value = '';
+    document.getElementById('addSerial').value = '';
+    // Reload devices
+    await loadDevices();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function showAddAP() {
+  const d = devices[selectedDevice];
+  const apCount = d && d.aps ? d.aps.length : 0;
+  document.getElementById('addAPName').value = 'AP-' + String(apCount + 1).padStart(2, '0');
+  document.getElementById('addAPMac').value = genAPMac();
+  document.getElementById('addAPModal').classList.add('open');
+  document.getElementById('addAPName').focus();
+  document.getElementById('addAPError').style.display = 'none';
+}
+
+async function submitAddAP() {
+  const errEl = document.getElementById('addAPError');
+  errEl.style.display = 'none';
+  const d = devices[selectedDevice];
+  if (!d) return;
+  const ssidStr = document.getElementById('addAPSSIDs').value.trim();
+  const ssids = ssidStr ? ssidStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+  const ap = {
+    name: document.getElementById('addAPName').value.trim(),
+    mac: document.getElementById('addAPMac').value.trim(),
+    model: document.getElementById('addAPModel').value.trim(),
+    ssids: ssids,
+    clients: [],
+  };
+  if (!ap.name || !ap.mac) {
+    errEl.textContent = 'Name and MAC are required';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await fetch('/api/devices/ap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_ip: d.ip, ap }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      try { errEl.textContent = JSON.parse(body).error; } catch { errEl.textContent = body; }
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('addAPModal').classList.remove('open');
+    document.getElementById('addAPName').value = '';
+    document.getElementById('addAPMac').value = '';
+    await loadDevices();
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+}
+
+function showAddClient() {
+  const d = devices[selectedDevice];
+  if (!d || !d.aps) return;
+  const sel = document.getElementById('addClientAP');
+  sel.innerHTML = d.aps.map(ap => `<option value="${ap.name}">${ap.name}</option>`).join('');
+  updateClientSSIDOptions();
+  document.getElementById('addClientMAC').value = genClientMac();
+  document.getElementById('addClientIPv4').value = genClientIP();
+  document.getElementById('addClientUser').value = 'user' + String(Math.floor(Math.random() * 900) + 100);
+  document.getElementById('addClientModal').classList.add('open');
+  document.getElementById('addClientMAC').focus();
+  document.getElementById('addClientError').style.display = 'none';
+}
+
+async function submitAddClient() {
+  const errEl = document.getElementById('addClientError');
+  errEl.style.display = 'none';
+  const d = devices[selectedDevice];
+  if (!d) return;
+  const client = {
+    mac: document.getElementById('addClientMAC').value.trim(),
+    ipv4: document.getElementById('addClientIPv4').value.trim(),
+    username: document.getElementById('addClientUser').value.trim(),
+    ssid: document.getElementById('addClientSSID').value.trim(),
+    rssi: parseInt(document.getElementById('addClientRSSI').value) || -55,
+    vlan: parseInt(document.getElementById('addClientVLAN').value) || 50,
+  };
+  const apName = document.getElementById('addClientAP').value;
+  if (!client.mac) {
+    errEl.textContent = 'Client MAC is required';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await fetch('/api/devices/client', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_ip: d.ip, ap_name: apName, client }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      try { errEl.textContent = JSON.parse(body).error; } catch { errEl.textContent = body; }
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('addClientModal').classList.remove('open');
+    document.getElementById('addClientMAC').value = '';
+    document.getElementById('addClientIPv4').value = '';
+    document.getElementById('addClientUser').value = '';
+    document.getElementById('addClientSSID').value = '';
+    await loadDevices();
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+}
+
+// --- SSID dropdown helpers ---
+
+function updateClientSSIDOptions() {
+  const d = devices[selectedDevice];
+  if (!d) return;
+  const apName = document.getElementById('addClientAP').value;
+  const ap = (d.aps || []).find(a => a.name === apName);
+  const ssids = ap && ap.ssids ? ap.ssids : [];
+  const sel = document.getElementById('addClientSSID');
+  sel.innerHTML = ssids.length === 0
+    ? '<option value="">No SSIDs defined on this AP</option>'
+    : ssids.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+function updateMoveSSIDOptions() {
+  const d = devices[selectedDevice];
+  if (!d) return;
+  const apName = document.getElementById('moveClientAP').value;
+  const ap = (d.aps || []).find(a => a.name === apName);
+  const ssids = ap && ap.ssids ? ap.ssids : [];
+  const sel = document.getElementById('moveClientSSID');
+  sel.innerHTML = ssids.length === 0
+    ? '<option value="">No SSIDs defined on this AP</option>'
+    : ssids.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+// --- Edit AP SSIDs ---
+
+function showEditAP(deviceIP, apName, ssids) {
+  document.getElementById('editAPDeviceIP').value = deviceIP;
+  document.getElementById('editAPName').value = apName;
+  document.getElementById('editAPLabel').textContent = apName;
+  document.getElementById('editAPSSIDs').value = ssids.join(', ');
+  document.getElementById('editAPError').style.display = 'none';
+  document.getElementById('editAPModal').classList.add('open');
+  document.getElementById('editAPSSIDs').focus();
+}
+
+async function submitEditAP() {
+  const errEl = document.getElementById('editAPError');
+  errEl.style.display = 'none';
+  const deviceIP = document.getElementById('editAPDeviceIP').value;
+  const apName = document.getElementById('editAPName').value;
+  const ssidStr = document.getElementById('editAPSSIDs').value.trim();
+  const ssids = ssidStr ? ssidStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+  try {
+    const res = await fetch('/api/devices/ap/ssids', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_ip: deviceIP, ap_name: apName, ssids }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      try { errEl.textContent = JSON.parse(body).error; } catch { errEl.textContent = body; }
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('editAPModal').classList.remove('open');
+    await loadDevices();
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+}
+
+// --- Move Client ---
+
+function showMoveClient(deviceIP, mac, currentAP, currentSSID) {
+  const d = devices[selectedDevice];
+  if (!d) return;
+  document.getElementById('moveClientDeviceIP').value = deviceIP;
+  document.getElementById('moveClientMAC').value = mac;
+  document.getElementById('moveClientLabel').textContent = mac;
+  const apSel = document.getElementById('moveClientAP');
+  apSel.innerHTML = (d.aps || []).map(ap => `<option value="${ap.name}" ${ap.name === currentAP ? 'selected' : ''}>${ap.name}</option>`).join('');
+  updateMoveSSIDOptions();
+  // Pre-select current SSID if available
+  const ssidSel = document.getElementById('moveClientSSID');
+  if (ssidSel.querySelector(`option[value="${currentSSID}"]`)) {
+    ssidSel.value = currentSSID;
+  }
+  document.getElementById('moveClientError').style.display = 'none';
+  document.getElementById('moveClientModal').classList.add('open');
+}
+
+async function submitMoveClient() {
+  const errEl = document.getElementById('moveClientError');
+  errEl.style.display = 'none';
+  const deviceIP = document.getElementById('moveClientDeviceIP').value;
+  const mac = document.getElementById('moveClientMAC').value;
+  const newAP = document.getElementById('moveClientAP').value;
+  const newSSID = document.getElementById('moveClientSSID').value;
+  if (!newAP || !newSSID) {
+    errEl.textContent = 'AP and SSID are required';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await fetch('/api/devices/client/move', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_ip: deviceIP, client_mac: mac, new_ap: newAP, new_ssid: newSSID }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      try { errEl.textContent = JSON.parse(body).error; } catch { errEl.textContent = body; }
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('moveClientModal').classList.remove('open');
+    await loadDevices();
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+}
+
+async function deleteAP(deviceIP, apName) {
+  if (!confirm(`Remove AP ${apName}? All its clients will be removed too.`)) return;
+  try {
+    const res = await fetch(`/api/devices/ap?device_ip=${encodeURIComponent(deviceIP)}&name=${encodeURIComponent(apName)}`, { method: 'DELETE' });
+    if (!res.ok) { const b = await res.text(); try { alert(JSON.parse(b).error); } catch { alert(b); } return; }
+    await loadDevices();
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteClient(deviceIP, mac) {
+  if (!confirm(`Remove client ${mac}?`)) return;
+  try {
+    const res = await fetch(`/api/devices/client?device_ip=${encodeURIComponent(deviceIP)}&mac=${encodeURIComponent(mac)}`, { method: 'DELETE' });
+    if (!res.ok) { const b = await res.text(); try { alert(JSON.parse(b).error); } catch { alert(b); } return; }
+    await loadDevices();
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteDevice(ip, hostname) {
+  if (!confirm(`Remove device ${hostname} (${ip})? Its servers will stop and the IP alias will be removed.`)) return;
+  try {
+    const res = await fetch('/api/devices?ip=' + encodeURIComponent(ip), { method: 'DELETE' });
+    if (!res.ok) {
+      const body = await res.text();
+      try { alert(JSON.parse(body).error); } catch { alert(body); }
+      return;
+    }
+    selectedDevice = null;
+    await loadDevices();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 loadDevices();

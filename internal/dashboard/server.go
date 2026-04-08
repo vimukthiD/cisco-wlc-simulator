@@ -12,7 +12,8 @@ import (
 	"time"
 
 	"github.com/vimukthi/cisco-wlc-sim/internal/accesslog"
-	"github.com/vimukthi/cisco-wlc-sim/internal/config"
+	"github.com/vimukthi/cisco-wlc-sim/internal/device"
+	"github.com/vimukthi/cisco-wlc-sim/internal/simulator"
 )
 
 var startTime = time.Now()
@@ -70,7 +71,7 @@ func getProcessCPUTime() time.Duration {
 var staticFS embed.FS
 
 // Serve starts the dashboard HTTP server.
-func Serve(port int, cfg *config.Config, logs *accesslog.Store) error {
+func Serve(port int, sim *simulator.Simulator, logs *accesslog.Store) error {
 	mux := http.NewServeMux()
 	cpu := newCPUSampler()
 
@@ -93,11 +94,159 @@ func Serve(port int, cfg *config.Config, logs *accesslog.Store) error {
 	})
 
 	mux.HandleFunc("/api/auth", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, cfg.Auth)
+		writeJSON(w, sim.Auth())
 	})
 
 	mux.HandleFunc("/api/devices", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, cfg.Devices)
+		switch r.Method {
+		case "GET", "":
+			writeJSON(w, sim.Devices())
+		case "POST":
+			var dev device.Device
+			if err := json.NewDecoder(r.Body).Decode(&dev); err != nil {
+				http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+				return
+			}
+			if err := sim.AddDevice(dev); err != nil {
+				http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusConflict)
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			writeJSON(w, dev)
+		case "DELETE":
+			ip := r.URL.Query().Get("ip")
+			if ip == "" {
+				http.Error(w, `{"error":"ip query parameter required"}`, http.StatusBadRequest)
+				return
+			}
+			if err := sim.RemoveDevice(ip); err != nil {
+				http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+				return
+			}
+			writeJSON(w, map[string]string{"status": "removed", "ip": ip})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/api/devices/ap", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "POST":
+			var req struct {
+				DeviceIP string    `json:"device_ip"`
+				AP       device.AP `json:"ap"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+				return
+			}
+			if req.DeviceIP == "" || req.AP.Name == "" {
+				http.Error(w, `{"error":"device_ip and ap.name are required"}`, http.StatusBadRequest)
+				return
+			}
+			if err := sim.AddAP(req.DeviceIP, req.AP); err != nil {
+				http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			writeJSON(w, req.AP)
+		case "DELETE":
+			ip := r.URL.Query().Get("device_ip")
+			name := r.URL.Query().Get("name")
+			if ip == "" || name == "" {
+				http.Error(w, `{"error":"device_ip and name query parameters required"}`, http.StatusBadRequest)
+				return
+			}
+			if err := sim.RemoveAP(ip, name); err != nil {
+				http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+				return
+			}
+			writeJSON(w, map[string]string{"status": "removed"})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/api/devices/client", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "POST":
+			var req struct {
+				DeviceIP string        `json:"device_ip"`
+				APName   string        `json:"ap_name"`
+				Client   device.Client `json:"client"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+				return
+			}
+			if req.DeviceIP == "" || req.APName == "" || req.Client.MAC == "" {
+				http.Error(w, `{"error":"device_ip, ap_name, and client.mac are required"}`, http.StatusBadRequest)
+				return
+			}
+			if err := sim.AddClient(req.DeviceIP, req.APName, req.Client); err != nil {
+				http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			writeJSON(w, req.Client)
+		case "DELETE":
+			ip := r.URL.Query().Get("device_ip")
+			mac := r.URL.Query().Get("mac")
+			if ip == "" || mac == "" {
+				http.Error(w, `{"error":"device_ip and mac query parameters required"}`, http.StatusBadRequest)
+				return
+			}
+			if err := sim.RemoveClient(ip, mac); err != nil {
+				http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+				return
+			}
+			writeJSON(w, map[string]string{"status": "removed"})
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/api/devices/ap/ssids", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PUT" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			DeviceIP string   `json:"device_ip"`
+			APName   string   `json:"ap_name"`
+			SSIDs    []string `json:"ssids"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+			return
+		}
+		if err := sim.UpdateAPSSIDs(req.DeviceIP, req.APName, req.SSIDs); err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]any{"status": "updated", "ssids": req.SSIDs})
+	})
+
+	mux.HandleFunc("/api/devices/client/move", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PUT" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			DeviceIP  string `json:"device_ip"`
+			ClientMAC string `json:"client_mac"`
+			NewAP     string `json:"new_ap"`
+			NewSSID   string `json:"new_ssid"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+			return
+		}
+		if err := sim.UpdateClient(req.DeviceIP, req.ClientMAC, req.NewAP, req.NewSSID); err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]string{"status": "moved"})
 	})
 
 	mux.HandleFunc("/api/logs", func(w http.ResponseWriter, r *http.Request) {

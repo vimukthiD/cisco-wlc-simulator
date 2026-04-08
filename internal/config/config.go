@@ -100,6 +100,17 @@ func Load(path string) (*Config, error) {
 					c.PolicyProfile = "default-policy-profile"
 				}
 			}
+			// Auto-populate AP SSIDs from client SSIDs if not explicitly set
+			ap := &d.APs[j]
+			if len(ap.SSIDs) == 0 {
+				seen := map[string]bool{}
+				for _, c := range ap.Clients {
+					if c.SSID != "" && !seen[c.SSID] {
+						ap.SSIDs = append(ap.SSIDs, c.SSID)
+						seen[c.SSID] = true
+					}
+				}
+			}
 		}
 	}
 

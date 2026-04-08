@@ -31,6 +31,7 @@ type AP struct {
 	Name    string   `yaml:"name" json:"name"`
 	MAC     string   `yaml:"mac" json:"mac"`
 	Model   string   `yaml:"model" json:"model"`
+	SSIDs   []string `yaml:"ssids" json:"ssids"`
 	Clients []Client `yaml:"clients" json:"clients"`
 }
 
