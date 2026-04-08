@@ -43,7 +43,9 @@ func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store) error {
 func buildOIDs(dev *device.Device, logs *accesslog.Store) []*GoSNMPServer.PDUValueControlItem {
 	var oids []*GoSNMPServer.PDUValueControlItem
 	oids = append(oids, sysGroup(dev, logs)...)
+	oids = append(oids, snmpEngine(dev, logs)...)
 	oids = append(oids, ifMIB(dev, logs)...)
+	oids = append(oids, ipAddrTable(dev, logs)...)
 	oids = append(oids, entityMIB(dev, logs)...)
 	return oids
 }
@@ -132,6 +134,21 @@ func sysGroup(dev *device.Device, logs *accesslog.Store) []*GoSNMPServer.PDUValu
 	}
 }
 
+// --- SNMP Engine (.1.3.6.1.6.3.10.2.1) ---
+
+func snmpEngine(dev *device.Device, logs *accesslog.Store) []*GoSNMPServer.PDUValueControlItem {
+	return []*GoSNMPServer.PDUValueControlItem{
+		{
+			OID:  "1.3.6.1.6.3.10.2.1.3.0",
+			Type: gosnmp.Integer,
+			OnGet: loggedGet(dev, logs, "snmpEngineTime", func() (interface{}, error) {
+				return GoSNMPServer.Asn1IntegerWrap(int(time.Since(dev.StartTime).Seconds())), nil
+			}),
+			Document: "snmpEngineTime",
+		},
+	}
+}
+
 // --- IF-MIB (.1.3.6.1.2.1.2) ---
 
 func ifMIB(dev *device.Device, logs *accesslog.Store) []*GoSNMPServer.PDUValueControlItem {
@@ -171,6 +188,22 @@ func ifMIB(dev *device.Device, logs *accesslog.Store) []*GoSNMPServer.PDUValueCo
 			Document: "ifType",
 		},
 		{
+			OID:  "1.3.6.1.2.1.2.2.1.4.1",
+			Type: gosnmp.Integer,
+			OnGet: loggedGet(dev, logs, "ifMtu.1", func() (interface{}, error) {
+				return GoSNMPServer.Asn1IntegerWrap(1500), nil
+			}),
+			Document: "ifMtu",
+		},
+		{
+			OID:  "1.3.6.1.2.1.2.2.1.5.1",
+			Type: gosnmp.Gauge32,
+			OnGet: loggedGet(dev, logs, "ifSpeed.1", func() (interface{}, error) {
+				return GoSNMPServer.Asn1Gauge32Wrap(1000000000), nil // 1 Gbps
+			}),
+			Document: "ifSpeed",
+		},
+		{
 			OID:  "1.3.6.1.2.1.2.2.1.6.1",
 			Type: gosnmp.OctetString,
 			OnGet: loggedGet(dev, logs, "ifPhysAddress.1", func() (interface{}, error) {
@@ -193,6 +226,62 @@ func ifMIB(dev *device.Device, logs *accesslog.Store) []*GoSNMPServer.PDUValueCo
 				return GoSNMPServer.Asn1IntegerWrap(1), nil // up
 			}),
 			Document: "ifOperStatus",
+		},
+		// IF-MIB extensions (.1.3.6.1.2.1.31.1.1.1)
+		{
+			OID:  "1.3.6.1.2.1.31.1.1.1.1.1",
+			Type: gosnmp.OctetString,
+			OnGet: loggedGet(dev, logs, "ifName.1", func() (interface{}, error) {
+				return GoSNMPServer.Asn1OctetStringWrap("Gi1"), nil
+			}),
+			Document: "ifName",
+		},
+		{
+			OID:  "1.3.6.1.2.1.31.1.1.1.18.1",
+			Type: gosnmp.OctetString,
+			OnGet: loggedGet(dev, logs, "ifAlias.1", func() (interface{}, error) {
+				return GoSNMPServer.Asn1OctetStringWrap("Management Interface"), nil
+			}),
+			Document: "ifAlias",
+		},
+	}
+}
+
+// --- IP-MIB ipAddrTable (.1.3.6.1.2.1.4.20.1) ---
+
+func ipAddrTable(dev *device.Device, logs *accesslog.Store) []*GoSNMPServer.PDUValueControlItem {
+	// OID index for ipAddrTable is the IP address itself encoded as octets
+	// e.g., 10.99.0.1 → .10.99.0.1
+	ip := net.ParseIP(dev.IP).To4()
+	if ip == nil {
+		return nil
+	}
+	idx := fmt.Sprintf("%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3])
+
+	return []*GoSNMPServer.PDUValueControlItem{
+		{
+			OID:  "1.3.6.1.2.1.4.20.1.1." + idx,
+			Type: gosnmp.IPAddress,
+			OnGet: loggedGet(dev, logs, "ipAdEntAddr", func() (interface{}, error) {
+				return GoSNMPServer.Asn1IPAddressWrap(ip), nil
+			}),
+			Document: "ipAdEntAddr",
+		},
+		{
+			OID:  "1.3.6.1.2.1.4.20.1.2." + idx,
+			Type: gosnmp.Integer,
+			OnGet: loggedGet(dev, logs, "ipAdEntIfIndex", func() (interface{}, error) {
+				return GoSNMPServer.Asn1IntegerWrap(1), nil // GigabitEthernet1
+			}),
+			Document: "ipAdEntIfIndex",
+		},
+		{
+			OID:  "1.3.6.1.2.1.4.20.1.3." + idx,
+			Type: gosnmp.IPAddress,
+			OnGet: loggedGet(dev, logs, "ipAdEntNetMask", func() (interface{}, error) {
+				return GoSNMPServer.Asn1IPAddressWrap(net.IPv4(255, 255, 255, 0).To4()), nil
+			}),
+			Document: "ipAdEntNetMask",
 		},
 	}
 }

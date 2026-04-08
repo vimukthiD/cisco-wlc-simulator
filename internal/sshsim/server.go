@@ -248,6 +248,8 @@ func executeCommand(cmd string, dev *device.Device, tftpMgr *tftpsim.Manager) st
 		return showSNMP(dev)
 	case matchCmd(parts, "show", "inventory"):
 		return showInventory(dev)
+	case matchCmd(parts, "show", "diagbus"):
+		return showDiag(dev)
 	case matchCmd(parts, "show", "diag"):
 		return showDiag(dev)
 	case matchCmd(parts, "show", "install", "running"):
