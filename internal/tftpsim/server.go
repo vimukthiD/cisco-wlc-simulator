@@ -18,10 +18,10 @@ import (
 	"github.com/vimukthi/cisco-wlc-sim/internal/device"
 )
 
-const idleTimeout = 20 * time.Second
+const idleTimeout = 30 * time.Second
 
 // Manager handles on-demand TFTP server startup per device.
-// Servers start lazily on first use and shut down after 20s of inactivity.
+// Servers start lazily on first use and shut down after 30s of inactivity.
 type Manager struct {
 	logs *accesslog.Store
 	mu   sync.Mutex
@@ -101,6 +101,7 @@ func (m *Manager) run(dev *device.Device, port int, ready chan struct{}) {
 			Source:     source,
 		})
 		_, err := rf.ReadFrom(strings.NewReader(config))
+		activity() // reset timer after transfer completes
 		return err
 	}
 
@@ -120,6 +121,7 @@ func (m *Manager) run(dev *device.Device, port int, ready chan struct{}) {
 			Source:     source,
 		})
 		_, err := wt.WriteTo(io.Discard)
+		activity() // reset timer after transfer completes
 		return err
 	}
 

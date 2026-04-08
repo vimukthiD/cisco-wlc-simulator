@@ -70,12 +70,12 @@ func main() {
 	// Re-init configs if LAN mode changed device IPs
 	if *lanMode {
 		for i := range cfg.Devices {
-			cfg.Devices[i].InitConfig("")
+			cfg.Devices[i].InitConfig(cfg.TmplText)
 		}
 	}
 
 	// Create simulator and start all device servers
-	sim := simulator.New(cfg, logs, "")
+	sim := simulator.New(cfg, logs, cfg.TmplText)
 	sim.StartAll()
 
 	// Start web dashboard

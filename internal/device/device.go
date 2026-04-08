@@ -92,7 +92,11 @@ func (d *Device) StartupConfig() string {
 }
 
 // RunningConfig returns the rendered Cisco IOS-XE config for this device.
+// Lazily initializes if the config hasn't been rendered yet.
 func (d *Device) RunningConfig() string {
+	if d.cachedConfig == "" {
+		d.InitConfig("")
+	}
 	return d.cachedConfig
 }
 

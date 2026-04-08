@@ -11,8 +11,9 @@ import (
 
 // Config is the top-level simulator configuration.
 type Config struct {
-	Auth    Auth            `yaml:"auth"`
-	Devices []device.Device `yaml:"devices"`
+	Auth     Auth            `yaml:"auth"`
+	Devices  []device.Device `yaml:"devices"`
+	TmplText string          `yaml:"-"` // loaded config template text
 }
 
 // Auth holds credentials for RESTCONF, SSH, and SNMP.
@@ -125,15 +126,14 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Load config template if it exists alongside the config file
-	tmplText := ""
 	tmplPath := filepath.Join(filepath.Dir(path), "running-config.tmpl")
 	if data, err := os.ReadFile(tmplPath); err == nil {
-		tmplText = string(data)
+		cfg.TmplText = string(data)
 	}
 
 	// Render config for each device
 	for i := range cfg.Devices {
-		cfg.Devices[i].InitConfig(tmplText)
+		cfg.Devices[i].InitConfig(cfg.TmplText)
 	}
 
 	return &cfg, nil
