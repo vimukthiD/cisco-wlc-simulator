@@ -9,7 +9,7 @@ Inspired by [simsnmp](https://github.com/lfbayer/simsnmp) — one IP per simulat
 - **RESTCONF API** — `Cisco-IOS-XE-wireless-client-oper:client-oper-data` with all sub-endpoints (common-oper-data, dot11-oper-data, traffic-stats, sisf-db-mac, dc-info, policy-data)
 - **SSH CLI** — Cisco IOS-XE style shell with `show` commands
 - **Web Dashboard** — real-time view of devices, clients, APs, and live access logs
-- **Multiple Devices** — each device gets its own IP, HTTPS port, and SSH port
+- **Multiple Devices** — each device gets its own IP, all on standard ports (SSH 22, HTTPS 443)
 - **Virtual IPs** — loopback aliases so each device is individually pingable
 - **YAML Config** — define devices, APs, and clients in a single config file
 
@@ -19,11 +19,8 @@ Inspired by [simsnmp](https://github.com/lfbayer/simsnmp) — one IP per simulat
 # Build
 go build -o wlcsim ./cmd/wlcsim/
 
-# Set up virtual IPs (requires sudo)
+# Set up virtual IPs and run (sudo needed for ports 22/443 and IP aliases)
 sudo ./wlcsim -setup-ips -config configs/devices.yaml
-
-# Run the simulator (dashboard on port 8080 by default)
-./wlcsim -config configs/devices.yaml
 
 # Open the dashboard
 open http://localhost:8080
@@ -50,28 +47,33 @@ sudo ./wlcsim -teardown-ips -config configs/devices.yaml
 
 ### RESTCONF API
 
+All devices listen on the standard HTTPS port (443) on their own IP — just like real WLCs:
+
 ```bash
 # Full client operational data
 curl -sk -u admin:Cisco123 \
-  https://10.99.0.1:9443/restconf/data/Cisco-IOS-XE-wireless-client-oper:client-oper-data
+  https://10.99.0.1/restconf/data/Cisco-IOS-XE-wireless-client-oper:client-oper-data
 
 # Just wireless client common data
 curl -sk -u admin:Cisco123 \
-  https://10.99.0.1:9443/restconf/data/Cisco-IOS-XE-wireless-client-oper:client-oper-data/common-oper-data
+  https://10.99.0.1/restconf/data/Cisco-IOS-XE-wireless-client-oper:client-oper-data/common-oper-data
 
 # Traffic stats
 curl -sk -u admin:Cisco123 \
-  https://10.99.0.1:9443/restconf/data/Cisco-IOS-XE-wireless-client-oper:client-oper-data/traffic-stats
+  https://10.99.0.1/restconf/data/Cisco-IOS-XE-wireless-client-oper:client-oper-data/traffic-stats
 
-# Second device
+# Second device — same port, different IP
 curl -sk -u admin:Cisco123 \
-  https://10.99.0.2:9444/restconf/data/Cisco-IOS-XE-wireless-client-oper:client-oper-data
+  https://10.99.0.2/restconf/data/Cisco-IOS-XE-wireless-client-oper:client-oper-data
 ```
 
 ### SSH
 
+All devices listen on standard SSH port (22):
+
 ```bash
-ssh -p 2221 admin@10.99.0.1
+ssh admin@10.99.0.1
+ssh admin@10.99.0.2
 # Password: Cisco123
 
 # Available CLI commands:
@@ -115,9 +117,9 @@ auth:
 
 devices:
   - hostname: WLC-SITE-A
-    ip: 10.99.0.1
-    https_port: 9443
-    ssh_port: 2221
+    ip: 10.99.0.1       # each device gets its own IP
+    https_port: 443      # standard port — same across all devices
+    ssh_port: 22         # standard port — same across all devices
     aps:
       - name: AP-Floor1-Lobby
         mac: "00:3a:7d:12:01:00"
@@ -130,6 +132,8 @@ devices:
             snr: 42
             # ... more fields
 ```
+
+Each device binds to its own IP:port tuple, so multiple devices can share port 22 and 443. Ports below 1024 require running with `sudo`.
 
 See [configs/devices.yaml](configs/devices.yaml) for a full example with two devices.
 

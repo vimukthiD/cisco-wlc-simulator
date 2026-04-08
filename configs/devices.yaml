@@ -5,8 +5,8 @@ auth:
 devices:
   - hostname: WLC-SITE-A
     ip: 10.99.0.1
-    https_port: 9443
-    ssh_port: 2221
+    https_port: 443
+    ssh_port: 22
     model: C9800-CL-K9
     serial: FCW2345L0AB
     version: "17.12.1"
@@ -103,8 +103,8 @@ devices:
 
   - hostname: WLC-SITE-B
     ip: 10.99.0.2
-    https_port: 9444
-    ssh_port: 2222
+    https_port: 443
+    ssh_port: 22
     model: C9800-CL-K9
     serial: FCW2345L0CD
     version: "17.12.1"
