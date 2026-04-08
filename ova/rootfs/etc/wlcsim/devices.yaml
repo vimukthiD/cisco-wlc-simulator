@@ -1,0 +1,180 @@
+auth:
+  username: admin
+  password: Cisco123
+  snmp_community: public
+
+devices:
+  - hostname: WLC-SITE-A
+    ip: 10.99.0.1
+    https_port: 443
+    ssh_port: 22
+    model: C9800-CL-K9
+    serial: FCW2345L0AB
+    version: "17.12.1"
+    aps:
+      - name: AP-Floor1-Lobby
+        mac: "00:3a:7d:12:01:00"
+        model: C9120AXI-B
+        clients:
+          - mac: "aa:bb:cc:11:22:01"
+            ipv4: "10.10.50.101"
+            username: jsmith
+            hostname: JSMITH-PC
+            ssid: Corporate-WiFi
+            wlan_id: 1
+            channel: 36
+            radio_type: client-radio-type-11ax-5ghz
+            rssi: -45
+            snr: 42
+            speed: 1200
+            bytes_rx: 2548234
+            bytes_tx: 12372910
+            pkts_rx: 22340
+            pkts_tx: 18870
+            device_type: Microsoft-Workstation
+            device_os: "Windows 11"
+            vlan: 50
+            spatial_streams: 2
+
+          - mac: "aa:bb:cc:11:22:02"
+            ipv4: "10.10.50.102"
+            username: mjones
+            hostname: MJONES-LAPTOP
+            ssid: Corporate-WiFi
+            wlan_id: 1
+            channel: 36
+            radio_type: client-radio-type-11ax-5ghz
+            rssi: -58
+            snr: 32
+            speed: 573
+            bytes_rx: 1024000
+            bytes_tx: 5120000
+            pkts_rx: 8000
+            pkts_tx: 6500
+            device_type: Apple-Device
+            device_os: macOS
+            vlan: 50
+
+      - name: AP-Floor2-East
+        mac: "00:3a:7d:12:02:00"
+        model: C9130AXI-B
+        clients:
+          - mac: "aa:bb:cc:11:22:03"
+            ipv4: "10.10.51.201"
+            username: guest01
+            hostname: GUEST-PHONE
+            ssid: Guest-WiFi
+            wlan_id: 2
+            channel: 149
+            radio_type: client-radio-type-11ax-5ghz
+            rssi: -62
+            snr: 28
+            speed: 400
+            bytes_rx: 512000
+            bytes_tx: 2048000
+            pkts_rx: 4000
+            pkts_tx: 3200
+            device_type: Samsung-Phone
+            device_os: Android
+            vlan: 100
+            vlan_name: GUEST
+            auth_key_mgmt: psk
+            security_mode: ewlc-assoc-mode-wpa2
+
+          - mac: "aa:bb:cc:11:22:04"
+            ipv4: "10.10.50.150"
+            ipv6:
+              - "2001:db8::abcd:1234"
+            username: adoe
+            hostname: ADOE-MACBOOK
+            ssid: Corporate-WiFi
+            wlan_id: 1
+            channel: 52
+            radio_type: client-radio-type-11ax-5ghz
+            rssi: -50
+            snr: 38
+            speed: 860
+            bytes_rx: 4096000
+            bytes_tx: 16384000
+            pkts_rx: 32000
+            pkts_tx: 28000
+            device_type: Apple-Device
+            device_os: macOS
+            vlan: 50
+
+  - hostname: WLC-SITE-B
+    ip: 10.99.0.2
+    https_port: 443
+    ssh_port: 22
+    model: C9800-CL-K9
+    serial: FCW2345L0CD
+    version: "17.12.1"
+    aps:
+      - name: AP-Warehouse-01
+        mac: "00:3a:7d:13:01:00"
+        model: C9124AXI-B
+        clients:
+          - mac: "dd:ee:ff:01:01:01"
+            ipv4: "10.20.10.50"
+            username: scanner01
+            hostname: WH-SCANNER-01
+            ssid: IoT-Network
+            wlan_id: 3
+            channel: 6
+            radio_type: client-radio-type-11ax-24ghz
+            rssi: -70
+            snr: 20
+            speed: 144
+            bytes_rx: 102400
+            bytes_tx: 51200
+            pkts_rx: 1200
+            pkts_tx: 800
+            device_type: Handheld-Scanner
+            device_os: Embedded
+            vlan: 200
+            vlan_name: IOT
+            auth_key_mgmt: psk
+
+          - mac: "dd:ee:ff:01:01:02"
+            ipv4: "10.20.10.51"
+            username: scanner02
+            hostname: WH-SCANNER-02
+            ssid: IoT-Network
+            wlan_id: 3
+            channel: 6
+            radio_type: client-radio-type-11ax-24ghz
+            rssi: -75
+            snr: 18
+            speed: 72
+            bytes_rx: 80000
+            bytes_tx: 40000
+            pkts_rx: 900
+            pkts_tx: 600
+            device_type: Handheld-Scanner
+            device_os: Embedded
+            vlan: 200
+            vlan_name: IOT
+            auth_key_mgmt: psk
+
+      - name: AP-Office-Main
+        mac: "00:3a:7d:13:02:00"
+        model: C9120AXI-B
+        clients:
+          - mac: "dd:ee:ff:02:02:01"
+            ipv4: "10.20.20.100"
+            username: bwilson
+            hostname: BWILSON-DESK
+            ssid: Corp-SiteB
+            wlan_id: 1
+            channel: 44
+            radio_type: client-radio-type-11ac
+            rssi: -48
+            snr: 40
+            speed: 867
+            bytes_rx: 8192000
+            bytes_tx: 32768000
+            pkts_rx: 64000
+            pkts_tx: 55000
+            device_type: Microsoft-Workstation
+            device_os: "Windows 11"
+            vlan: 50

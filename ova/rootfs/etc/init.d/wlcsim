@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+
+name="wlcsim"
+description="Cisco 9800-CL WLC Simulator"
+command="/usr/local/bin/wlcsim"
+command_args="--config /etc/wlcsim/devices.yaml --lan --dashboard-port 8080"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="/var/log/wlcsim.log"
+error_log="/var/log/wlcsim.log"
+
+depend() {
+    need net
+    after firewall
+}
+
+start_pre() {
+    checkpath -d -m 0755 /var/log
+}
