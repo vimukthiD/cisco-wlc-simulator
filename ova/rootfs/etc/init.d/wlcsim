@@ -10,10 +10,21 @@ output_log="/var/log/wlcsim.log"
 error_log="/var/log/wlcsim.log"
 
 depend() {
-    need net
-    after firewall
+    after firewall local
 }
 
 start_pre() {
     checkpath -d -m 0755 /var/log
+    # Wait for DHCP to install a default route (up to 30s). The dhcp-all.start
+    # local script runs udhcpc in the background, so routes may not exist yet
+    # when this service fires.
+    i=0
+    while [ $i -lt 30 ]; do
+        if ip route show default 2>/dev/null | grep -q '^default'; then
+            return 0
+        fi
+        sleep 1
+        i=$((i + 1))
+    done
+    ewarn "No default route after 30s; starting anyway"
 }

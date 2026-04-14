@@ -38,7 +38,7 @@ variable "binary_dir" {
 
 variable "disk_size" {
   type    = string
-  default = "2G"
+  default = "4G"
 }
 
 variable "memory" {

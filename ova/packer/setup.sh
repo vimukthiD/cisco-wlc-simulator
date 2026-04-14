@@ -40,7 +40,16 @@ mkinitfs "${LTS_VERSION}"
 apk del --no-cache linux-virt 2>/dev/null || true
 
 echo "=== Installing packages ==="
-apk add --no-cache iproute2 iputils
+# haveged seeds the kernel entropy pool in software — without it, crypto/rand
+# blocks for ~60s at startup on ARM64 VMs while RESTCONF/SSH generate keys.
+apk add --no-cache iproute2 iputils haveged
+rc-update add haveged boot 2>/dev/null || true
+
+# Disable host sshd — it would bind 0.0.0.0:22 and hijack SSH traffic to the
+# simulated device alias IPs. Users reach the simulator via the console TUI;
+# the wlcsim binary runs its own SSH server per device.
+rc-update del sshd default 2>/dev/null || true
+rc-service sshd stop 2>/dev/null || true
 
 echo "=== Installing simulator binaries ==="
 install -m 755 /tmp/wlcsim /usr/local/bin/wlcsim
@@ -65,6 +74,61 @@ sed -i '/^tty[2-9]/s/^/#/' /etc/inittab
 sed -i '/^ttyS[0-9]/s/^/#/' /etc/inittab
 sed -i '/^ttyAMA[0-9]/s/^/#/' /etc/inittab
 
+echo "=== Installing EFI fallback bootloader ==="
+# UEFI looks for \EFI\BOOT\BOOTAA64.EFI (ARM64) or BOOTX64.EFI (AMD64) when
+# there's no NVRAM boot entry. Without this, the VM drops to UEFI shell on
+# hypervisors other than the one that built it (UTM, VirtualBox, etc.).
+# --removable installs to the standard fallback path that all UEFI firmware checks.
+# --no-nvram avoids writing boot entries (they won't survive hypervisor changes).
+
+# Find the EFI System Partition mount point
+ESP=""
+for mp in /boot/efi /boot; do
+  if [ -d "$mp/EFI" ] || mount | grep -q " $mp .*vfat"; then
+    ESP="$mp"
+    break
+  fi
+done
+
+# Detect architecture for grub target
+ARCH_GRUB=""
+case "$(uname -m)" in
+  aarch64) ARCH_GRUB="arm64-efi" ;;
+  x86_64)  ARCH_GRUB="x86_64-efi" ;;
+esac
+
+if [ -n "$ESP" ] && [ -n "$ARCH_GRUB" ]; then
+  echo "ESP at: $ESP, GRUB target: $ARCH_GRUB"
+  echo "ESP contents before:"
+  find "$ESP" -type f 2>/dev/null || true
+
+  # Use grub-install --removable to create the standard fallback bootloader
+  apk add --no-cache grub-efi 2>/dev/null || true
+  grub-install --target="$ARCH_GRUB" --efi-directory="$ESP" --removable --no-nvram 2>&1 || true
+
+  # If grub-install didn't work, try manual copy as fallback
+  if [ ! -f "$ESP/EFI/BOOT/BOOTAA64.EFI" ] && [ ! -f "$ESP/EFI/BOOT/BOOTX64.EFI" ]; then
+    echo "grub-install fallback: copying manually..."
+    mkdir -p "$ESP/EFI/BOOT"
+    for src in "$ESP"/EFI/*/grub*.efi /usr/lib/grub/arm64-efi/monolithic/grubaa64.efi; do
+      if [ -f "$src" ]; then
+        case "$(uname -m)" in
+          aarch64) cp "$src" "$ESP/EFI/BOOT/BOOTAA64.EFI" ;;
+          x86_64)  cp "$src" "$ESP/EFI/BOOT/BOOTX64.EFI" ;;
+        esac
+        echo "Copied $src"
+        break
+      fi
+    done
+  fi
+
+  echo "ESP contents after:"
+  find "$ESP" -type f 2>/dev/null || true
+else
+  echo "WARNING: Could not find ESP (checked /boot/efi, /boot) or detect arch"
+  mount | grep -E 'boot|efi' || true
+fi
+
 echo "=== Configuring bootloader for console output ==="
 for cfg in /boot/grub/grub.cfg /boot/extlinux.conf; do
   if [ -f "$cfg" ]; then
@@ -77,17 +141,26 @@ for cfg in /boot/grub/grub.cfg /boot/extlinux.conf; do
 done
 
 echo "=== Configuring network ==="
-# Use predictable interface names and DHCP for any available interface
+# Static interfaces file for loopback only — dynamic DHCP handled by boot script
 cat > /etc/network/interfaces << 'EOF'
 auto lo
 iface lo inet loopback
-
-auto eth0
-iface eth0 inet dhcp
-
-auto ens160
-iface ens160 inet dhcp
 EOF
+
+# Dynamic network setup: auto-detect and DHCP any non-loopback interface at boot.
+# This works across all hypervisors regardless of interface naming (eth0, enp0s1, ens160, etc.)
+mkdir -p /etc/local.d
+cat > /etc/local.d/dhcp-all.start << 'NETSCRIPT'
+#!/bin/sh
+for sysif in /sys/class/net/*; do
+    iface=$(basename "$sysif")
+    [ "$iface" = "lo" ] && continue
+    ip link set "$iface" up
+    udhcpc -i "$iface" -b -q -S -p "/var/run/udhcpc.${iface}.pid" 2>/dev/null &
+done
+NETSCRIPT
+chmod +x /etc/local.d/dhcp-all.start
+rc-update add local default
 
 echo "=== Setting MOTD ==="
 cat > /etc/motd << 'MOTD'

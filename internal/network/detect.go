@@ -2,10 +2,12 @@ package network
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // InterfaceInfo holds details about the primary network interface.
@@ -20,10 +22,20 @@ type InterfaceInfo struct {
 // If ifaceName is non-empty, it uses that interface instead of auto-detecting.
 func DetectPrimaryInterface(ifaceName string) (*InterfaceInfo, error) {
 	if ifaceName == "" {
+		// Retry auto-detection for up to 60s to handle boot races where DHCP
+		// hasn't installed a default route yet (VM appliance use case).
 		var err error
-		ifaceName, err = detectDefaultInterface()
-		if err != nil {
-			return nil, fmt.Errorf("detect default interface: %w", err)
+		deadline := time.Now().Add(60 * time.Second)
+		for {
+			ifaceName, err = detectDefaultInterface()
+			if err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				return nil, fmt.Errorf("detect default interface: %w", err)
+			}
+			log.Printf("  waiting for default route... (%v)", err)
+			time.Sleep(2 * time.Second)
 		}
 	}
 
@@ -94,5 +106,5 @@ func detectDefaultInterfaceLinux() (string, error) {
 			return fields[i+1], nil
 		}
 	}
-	return "", fmt.Errorf("could not find dev in ip route output")
+	return "", fmt.Errorf("no default route yet (output: %q)", strings.TrimSpace(string(out)))
 }
