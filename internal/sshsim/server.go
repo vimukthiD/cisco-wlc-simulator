@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -24,8 +25,10 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// Serve starts an SSH server for the given device.
-func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store, tftpMgr *tftpsim.Manager) error {
+// Serve starts an SSH server for the given device. It runs until stop is
+// closed, at which point the listener is closed and Serve returns nil
+// (freeing the IP:port for reuse).
+func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store, tftpMgr *tftpsim.Manager, stop <-chan struct{}) error {
 	sshConfig := &ssh.ServerConfig{
 		PasswordCallback: func(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
 			if conn.User() == auth.Username && string(password) == auth.Password {
@@ -47,11 +50,19 @@ func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store, tftpMgr 
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
 
+	go func() {
+		<-stop
+		listener.Close()
+	}()
+
 	log.Printf("[%s] SSH listening on %s", dev.Hostname, addr)
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				return nil
+			}
 			log.Printf("[%s] SSH accept error: %v", dev.Hostname, err)
 			continue
 		}

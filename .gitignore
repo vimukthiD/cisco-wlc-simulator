@@ -6,3 +6,8 @@
 *.vmdk
 *.qcow2
 .DS_Store
+
+# Persisted runtime state (auto-generated next to the config)
+state.yaml
+configs/state.yaml
+*.yaml.tmp

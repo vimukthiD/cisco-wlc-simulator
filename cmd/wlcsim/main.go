@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -16,7 +17,8 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "configs/devices.yaml", "path to devices config file")
+	configPath := flag.String("config", "configs/devices.yaml", "path to seed devices config file")
+	statePath := flag.String("state", "", "path to persisted runtime state (default: state.yaml next to -config)")
 	dashPort := flag.Int("dashboard-port", 8080, "web dashboard port")
 	lanMode := flag.Bool("lan", false, "bind to physical interface for LAN accessibility")
 	lanIface := flag.String("interface", "", "network interface for LAN mode (auto-detect if empty)")
@@ -24,9 +26,33 @@ func main() {
 	teardownOnly := flag.Bool("teardown-ips", false, "only remove virtual IP aliases, then exit")
 	flag.Parse()
 
-	cfg, err := config.Load(*configPath)
+	// The state file lives next to the seed config unless overridden. Its
+	// presence means "restore the saved runtime state"; its absence means
+	// "start from the seed config".
+	if *statePath == "" {
+		*statePath = filepath.Join(filepath.Dir(*configPath), "state.yaml")
+	}
+
+	// Load the seed config (also gives us the running-config template) and,
+	// if a saved state file exists, prefer it as the active config.
+	seedCfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
+	}
+	cfg := seedCfg
+	if fileExists(*statePath) {
+		if stateCfg, err := config.Load(*statePath); err != nil {
+			log.Printf("Warning: failed to load saved state %s (%v); using seed config", *statePath, err)
+		} else {
+			// Keep the seed's template so state files carried between machines
+			// still render consistently.
+			stateCfg.TmplText = seedCfg.TmplText
+			for i := range stateCfg.Devices {
+				stateCfg.Devices[i].InitConfig(stateCfg.TmplText)
+			}
+			cfg = stateCfg
+			log.Printf("Restored saved state from %s (%d device(s))", *statePath, len(cfg.Devices))
+		}
 	}
 
 	// Standalone IP management commands
@@ -75,7 +101,12 @@ func main() {
 	}
 
 	// Create simulator and start all device servers
-	sim := simulator.New(cfg, logs, cfg.TmplText)
+	sim := simulator.New(cfg, logs, cfg.TmplText, simulator.Options{
+		StatePath: *statePath,
+		SeedPath:  *configPath,
+		LAN:       *lanMode,
+		Iface:     lanIfaceName,
+	})
 	sim.StartAll()
 
 	// Start web dashboard
@@ -91,6 +122,7 @@ func main() {
 	}
 	log.Printf("Simulator running with %d device(s) [%s]. Press Ctrl+C to stop.", len(cfg.Devices), mode)
 	log.Printf("  Dashboard: http://localhost:%d", *dashPort)
+	log.Printf("  State file: %s", *statePath)
 	for _, dev := range cfg.Devices {
 		log.Printf("  %s @ %s (HTTPS:%d, SSH:%d, SNMP:%d, TFTP:on-demand)", dev.Hostname, dev.IP, dev.HTTPSPort, dev.SSHPort, dev.SNMPPort)
 	}
@@ -108,4 +140,11 @@ func main() {
 		network.TeardownIPs(sim.Devices())
 	}
 	log.Println("Done.")
+}
+
+// fileExists reports whether path is a non-empty regular file. A zero-byte
+// file is treated as absent so a truncated state file falls back to the seed.
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Size() > 0
 }

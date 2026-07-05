@@ -41,6 +41,7 @@ Requires sudo for privileged ports (22, 161, 443, 69) and IP alias management.
 - `configs/devices.yaml` — sample device config (2 WLCs, 4 APs, 7 clients)
 - `configs/running-config.tmpl` — IOS-XE config template (Go text/template)
 - `ova/` — VM appliance build system (Packer, Alpine rootfs, OVA packaging)
+- `.github/workflows/release.yml` — tag-driven release CI (cross-built binaries + AMD64 OVA)
 
 ## Key Patterns
 
@@ -52,6 +53,9 @@ Requires sudo for privileged ports (22, 161, 443, 69) and IP alias management.
 - **Content negotiation**: RESTCONF checks `Accept` header, defaults to XML, JSON when `application/yang-data+json`
 - **LAN mode**: IPs added to physical interface + loopback (macOS dual alias), gratuitous ARP, auto-assign from subnet
 - **AP SSIDs**: APs have explicit SSID list; clients can only join AP's SSIDs; auto-populated from client data on load
+- **Persistence**: every simulator mutation writes the full state to a YAML state file (atomic temp+rename) in the same `devices.yaml` format. On startup, a present state file is loaded in preference to the seed config; its **absence** means "use the seed." `state.yaml` lives next to `-config` by default (override with `-state`).
+- **State file invariant**: the state file always mirrors the running state. Factory Reset re-applies the seed and *deletes* the state file (restart → seed); Clear All empties the devices and *writes* an empty state; Import replaces everything and writes the state. `internal/config` owns both directions of the YAML↔`Config` mapping (`Load`/`ParseYAML` in, `Marshal`/`Save` out).
+- **Graceful shutdown**: each protocol `Serve` takes a `stop <-chan struct{}`; the simulator holds a per-device `deviceHandle` (stop channel + WaitGroup) so it can stop a device's three servers and reuse its `IP:port` immediately (required for reset/import; also fixes `RemoveDevice`'s old socket leak).
 
 ## Testing
 
@@ -80,6 +84,12 @@ curl http://localhost:8080/api/devices
 curl -X POST http://localhost:8080/api/devices -d '{"hostname":"NEW","ip":"10.99.0.3"}'
 curl -X POST http://localhost:8080/api/devices/ap -d '{"device_ip":"10.99.0.1","ap":{"name":"AP-1","mac":"00:aa:bb:cc:dd:00","ssids":["WiFi"]}}'
 curl -X PUT http://localhost:8080/api/devices/client/move -d '{"device_ip":"10.99.0.1","client_mac":"aa:bb:cc:11:22:01","new_ap":"AP-2","new_ssid":"Guest"}'
+
+# Config persistence: export / import / reinitialize
+curl http://localhost:8080/api/config/export -o backup.yaml          # download current state
+curl -X POST http://localhost:8080/api/config/import --data-binary @backup.yaml   # replace all state
+curl -X POST 'http://localhost:8080/api/config/reset?mode=factory'   # restore seed devices.yaml
+curl -X POST 'http://localhost:8080/api/config/reset?mode=clear'     # remove all devices
 ```
 
 ## OVA Build
@@ -93,13 +103,17 @@ The OVA build uses Packer with QEMU to create an Alpine Linux VM appliance:
 5. Setup script installs packages, enables services, configures console TUI
 6. Post-processing converts qcow2 → streamOptimized VMDK → OVA
 
-**Prerequisites**: Go 1.21+, Packer (`brew install packer`), QEMU (`brew install qemu`)
+**Prerequisites**: Go 1.23+, Packer (`brew install packer`), QEMU (`brew install qemu`)
 
 **Key files**:
-- `ova/packer/wlcsim.pkr.hcl` — Packer template (QEMU builder, ARM64/AMD64)
-- `ova/packer/setup.sh` — post-install provisioning (packages, service, console)
+- `ova/packer/wlcsim.pkr.hcl` — Packer template (QEMU builder, ARM64/AMD64, Alpine 3.21)
+- `ova/packer/setup.sh` — post-install provisioning (LTS kernel swap, NVMe initramfs, packages, service, console)
+- `ova/rootfs/etc/` — Alpine overlay (init.d service, network config, motd, sample configs)
 - `ova/scripts/package-ova.sh` — VMDK conversion + OVF + manifest + tar
 - `ova/templates/wlcsim.ovf.tmpl` — OVF descriptor (2 vCPU, 256MB RAM, bridged NIC)
+- `.github/workflows/release.yml` — tag-triggered CI: builds Linux/Darwin binaries + AMD64 OVA, publishes GitHub Release
+
+**Kernel choice**: The build installs `linux-lts` over Alpine's default `linux-virt` so the same image boots on QEMU/KVM, VMware Fusion ARM (NVMe + vmxnet3), and VirtualBox. Bootloader configs (GRUB/extlinux) are rewritten to point at the LTS kernel and NVMe is added to the initramfs.
 
 **macOS EFI firmware**: ARM64 builds need `/opt/homebrew/share/qemu/edk2-aarch64-code.fd` (installed by `brew install qemu`)
 
@@ -114,6 +128,7 @@ The OVA build uses Packer with QEMU to create an Alpine Linux VM appliance:
 
 ## Important Notes
 
+- **State file**: defaults to `state.yaml` beside `-config` (so `configs/state.yaml` locally, `/etc/wlcsim/state.yaml` on the appliance — both writable). It's gitignored. Delete it (or Factory Reset) to revert to the seed. The LAN reassigned IPs are captured on the first mutation, so restarts keep them.
 - Build warnings from `github.com/shoenig/go-m1cpu` (transitive dep) are harmless
 - macOS: local ping to LAN-mode aliases requires dual alias (en0 + lo0), already handled
 - SNMP community string validation requires `SecurityConfig.NoSecurity: false` (not `true`)

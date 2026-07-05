@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"runtime"
@@ -247,6 +248,69 @@ func Serve(port int, sim *simulator.Simulator, logs *accesslog.Store) error {
 			return
 		}
 		writeJSON(w, map[string]string{"status": "moved"})
+	})
+
+	// Export the current running state as a downloadable devices.yaml.
+	mux.HandleFunc("/api/config/export", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" && r.Method != "" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		data, err := sim.ExportYAML()
+		if err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			return
+		}
+		filename := fmt.Sprintf("wlcsim-config-%s.yaml", time.Now().Format("20060102-150405"))
+		w.Header().Set("Content-Type", "application/x-yaml")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+		w.Write(data)
+	})
+
+	// Import a devices.yaml, replacing all running state.
+	mux.HandleFunc("/api/config/import", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		data, err := io.ReadAll(io.LimitReader(r.Body, 8<<20)) // 8 MiB cap
+		if err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+			return
+		}
+		if len(data) == 0 {
+			http.Error(w, `{"error":"empty config"}`, http.StatusBadRequest)
+			return
+		}
+		if err := sim.ImportConfig(data); err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, map[string]any{"status": "imported", "devices": len(sim.Devices())})
+	})
+
+	// Reinitialize: mode=factory restores the seed config; mode=clear empties it.
+	mux.HandleFunc("/api/config/reset", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		mode := r.URL.Query().Get("mode")
+		var err error
+		switch mode {
+		case "factory":
+			err = sim.FactoryReset()
+		case "clear":
+			err = sim.ClearAll()
+		default:
+			http.Error(w, `{"error":"mode must be 'factory' or 'clear'"}`, http.StatusBadRequest)
+			return
+		}
+		if err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"status": "reset", "mode": mode, "devices": len(sim.Devices())})
 	})
 
 	mux.HandleFunc("/api/logs", func(w http.ResponseWriter, r *http.Request) {

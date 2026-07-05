@@ -23,19 +23,91 @@ type Auth struct {
 	SNMPCommunity string `yaml:"snmp_community" json:"snmp_community"`
 }
 
-// Load reads and parses the YAML config file.
+// stateHeader is prepended to persisted/exported YAML so the file is
+// self-documenting when opened by hand.
+const stateHeader = `# Cisco 9800-CL WLC Simulator configuration.
+# When saved as the runtime state file this is auto-generated on every change;
+# delete it (or use Factory Reset in the dashboard) to revert to the seed devices.yaml.
+`
+
+// Load reads and parses a YAML config file, applying defaults and rendering
+// each device's running-config from the template found alongside it.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
+	cfg, err := ParseYAML(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// Load config template if it exists alongside the config file
+	tmplPath := filepath.Join(filepath.Dir(path), "running-config.tmpl")
+	if tmplData, err := os.ReadFile(tmplPath); err == nil {
+		cfg.TmplText = string(tmplData)
+	}
+
+	// Render config for each device
+	for i := range cfg.Devices {
+		cfg.Devices[i].InitConfig(cfg.TmplText)
+	}
+
+	return cfg, nil
+}
+
+// ParseYAML parses raw YAML bytes into a Config and applies defaults. It does
+// not load a template or render device configs — callers that need a rendered
+// config should call InitConfig (Load does this; the simulator does it when
+// importing). Used for both Load and dashboard import.
+func ParseYAML(data []byte) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
+	applyDefaults(&cfg)
+	return &cfg, nil
+}
 
-	// Apply defaults
+// Marshal serializes a Config back to the devices.yaml format (auth + devices),
+// prefixed with a self-documenting header. Transient fields (StartTime, cached
+// config) are excluded via their yaml:"-" tags.
+func Marshal(cfg *Config) ([]byte, error) {
+	body, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("marshal config: %w", err)
+	}
+	return append([]byte(stateHeader), body...), nil
+}
+
+// Save atomically writes a Config to path (temp file + rename) so a crash
+// mid-write can never leave a truncated state file.
+func Save(path string, cfg *Config) error {
+	data, err := Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	if dir := filepath.Dir(path); dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create state dir: %w", err)
+		}
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("write state: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("replace state: %w", err)
+	}
+	return nil
+}
+
+// applyDefaults fills in defaults for devices, clients, auth, and AP SSIDs.
+// It is idempotent, so persisted configs (which already contain expanded
+// defaults) round-trip cleanly.
+func applyDefaults(cfg *Config) {
 	for i := range cfg.Devices {
 		d := &cfg.Devices[i]
 		if d.HTTPSPort == 0 {
@@ -124,17 +196,4 @@ func Load(path string) (*Config, error) {
 	if cfg.Auth.SNMPCommunity == "" {
 		cfg.Auth.SNMPCommunity = "public"
 	}
-
-	// Load config template if it exists alongside the config file
-	tmplPath := filepath.Join(filepath.Dir(path), "running-config.tmpl")
-	if data, err := os.ReadFile(tmplPath); err == nil {
-		cfg.TmplText = string(data)
-	}
-
-	// Render config for each device
-	for i := range cfg.Devices {
-		cfg.Devices[i].InitConfig(cfg.TmplText)
-	}
-
-	return &cfg, nil
 }

@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -20,8 +21,10 @@ import (
 	"github.com/vimukthiD/cisco-wlc-simulator/internal/device"
 )
 
-// Serve starts an HTTPS RESTCONF server for the given device.
-func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store) error {
+// Serve starts an HTTPS RESTCONF server for the given device. It runs until
+// stop is closed, at which point the listener is shut down and Serve returns
+// nil (freeing the IP:port for reuse).
+func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store, stop <-chan struct{}) error {
 	mux := http.NewServeMux()
 
 	// RESTCONF root
@@ -92,7 +95,16 @@ func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store) error {
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
 	tlsLn := tls.NewListener(ln, server.TLSConfig)
-	return server.Serve(tlsLn)
+
+	go func() {
+		<-stop
+		server.Close()
+	}()
+
+	if err := server.Serve(tlsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 func basicAuth(next http.Handler, auth config.Auth) http.Handler {

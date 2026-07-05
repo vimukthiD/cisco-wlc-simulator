@@ -14,8 +14,10 @@ import (
 	"github.com/vimukthiD/cisco-wlc-simulator/internal/device"
 )
 
-// Serve starts an SNMP agent for the given device.
-func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store) error {
+// Serve starts an SNMP agent for the given device. It runs until stop is
+// closed, at which point the UDP listener is shut down and Serve returns nil
+// (freeing the IP:port for reuse).
+func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store, stop <-chan struct{}) error {
 	oids := buildOIDs(dev, logs)
 
 	master := GoSNMPServer.MasterAgent{
@@ -35,6 +37,11 @@ func Serve(dev *device.Device, auth config.Auth, logs *accesslog.Store) error {
 	if err := server.ListenUDP("udp", addr); err != nil {
 		return fmt.Errorf("snmp listen %s: %w", addr, err)
 	}
+
+	go func() {
+		<-stop
+		server.Shutdown()
+	}()
 
 	log.Printf("[%s] SNMP listening on %s (community: %s)", dev.Hostname, addr, auth.SNMPCommunity)
 	return server.ServeForever()

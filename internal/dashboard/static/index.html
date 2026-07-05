@@ -399,6 +399,24 @@
     flex-shrink: 0;
   }
   .refresh-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* Header toolbar (export / import / reset) */
+  .toolbar { margin-left: auto; display: flex; gap: 8px; }
+  .hdr-btn {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .hdr-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .hdr-btn.warn:hover { border-color: var(--orange); color: var(--orange); }
+  .hdr-btn.danger:hover { border-color: var(--red); color: var(--red); }
 </style>
 </head>
 <body>
@@ -406,6 +424,13 @@
   <span class="status-dot"></span>
   <h1>Cisco 9800-CL WLC Simulator</h1>
   <span class="subtitle" id="headerInfo">Loading...</span>
+  <div class="toolbar">
+    <button class="hdr-btn" onclick="exportConfig()" title="Download the current configuration as a YAML backup">&#x2193; Export</button>
+    <button class="hdr-btn" onclick="triggerImport()" title="Load a configuration from a YAML file (replaces everything)">&#x2191; Import</button>
+    <button class="hdr-btn warn" onclick="factoryReset()" title="Discard runtime changes and restore the bundled seed config">&#x21bb; Factory Reset</button>
+    <button class="hdr-btn danger" onclick="clearAll()" title="Remove all devices and start empty">&#x1f5d1; Clear All</button>
+    <input type="file" id="importFile" accept=".yaml,.yml,application/x-yaml,text/yaml" style="display:none" onchange="importConfig(event)">
+  </div>
 </header>
 
 <div class="container">
@@ -1316,6 +1341,70 @@ async function deleteDevice(ip, hostname) {
     await loadDevices();
   } catch (e) {
     alert(e.message);
+  }
+}
+
+// --- Config export / import / reset ---
+
+function exportConfig() {
+  // Server sets Content-Disposition with a timestamped filename.
+  const a = document.createElement('a');
+  a.href = '/api/config/export';
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function triggerImport() {
+  document.getElementById('importFile').click();
+}
+
+async function importConfig(event) {
+  const input = event.target;
+  const file = input.files[0];
+  input.value = ''; // allow re-selecting the same file later
+  if (!file) return;
+  if (!confirm(`Import "${file.name}"?\n\nThis REPLACES all current devices and credentials with the contents of the file.`)) return;
+  try {
+    const text = await file.text();
+    const res = await fetch('/api/config/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-yaml' },
+      body: text,
+    });
+    if (!res.ok) {
+      const b = await res.text();
+      try { alert('Import failed: ' + JSON.parse(b).error); } catch { alert('Import failed: ' + b); }
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    alert('Import failed: ' + e.message);
+  }
+}
+
+async function factoryReset() {
+  if (!confirm('Factory Reset?\n\nThis discards all runtime changes and restores the bundled seed configuration.')) return;
+  await postReset('factory');
+}
+
+async function clearAll() {
+  if (!confirm('Clear All?\n\nThis removes every device and leaves the simulator empty.')) return;
+  await postReset('clear');
+}
+
+async function postReset(mode) {
+  try {
+    const res = await fetch('/api/config/reset?mode=' + mode, { method: 'POST' });
+    if (!res.ok) {
+      const b = await res.text();
+      try { alert('Reset failed: ' + JSON.parse(b).error); } catch { alert('Reset failed: ' + b); }
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    alert('Reset failed: ' + e.message);
   }
 }
 

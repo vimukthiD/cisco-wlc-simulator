@@ -13,6 +13,7 @@ Inspired by [simsnmp](https://github.com/lfbayer/simsnmp) — one IP per simulat
 - **TFTP** — on-demand TFTP server for config transfers, starts when `copy` command is issued
 - **Web Dashboard** — real-time view of devices, APs, clients, system metrics, and live access logs
 - **Runtime Management** — add/remove devices, APs, and clients via dashboard or REST API while running
+- **Config Persistence** — runtime changes survive restarts; export/import backups and reinitialize (factory reset or clear) from the dashboard
 - **LAN Mode** — bind to physical interface for network-wide accessibility from other machines
 - **Multiple Devices** — each device gets its own IP on standard ports (SSH 22, HTTPS 443, SNMP 161)
 - **Config Template** — customizable running-config template with device-specific values
@@ -146,6 +147,11 @@ Features:
 - **Config tab** — credentials, RESTCONF URL, SSH command, SNMP community, SCP/TFTP examples
 - **Live access logs** — real-time RESTCONF, SSH, SNMP, TFTP requests via SSE
 - **Runtime management** — add devices/APs/clients with auto-generated values
+- **Config toolbar** — Export (download a YAML backup), Import (restore/replace from a file), Factory Reset (restore seed), Clear All (empty)
+
+### Config Persistence
+
+Changes made at runtime (via the dashboard or REST API) are saved to a **state file** — `state.yaml` next to the config by default (override with `-state`) — in the same format as `devices.yaml`. On startup the simulator restores this state if present, so nothing is lost across restarts. Deleting the state file (or clicking **Factory Reset**) reverts to the bundled seed config. The header toolbar also lets you **Export** the current state as a portable backup and **Import** one to replace everything.
 
 ### Dashboard REST API
 
@@ -160,6 +166,10 @@ Features:
 | POST | `/api/devices/client` | Add a client to an AP |
 | DELETE | `/api/devices/client?device_ip=<ip>&mac=<mac>` | Remove a client |
 | PUT | `/api/devices/client/move` | Move client to different AP/SSID |
+| GET | `/api/config/export` | Download current state as `devices.yaml` |
+| POST | `/api/config/import` | Replace all state from a posted YAML body |
+| POST | `/api/config/reset?mode=factory` | Restore the bundled seed config |
+| POST | `/api/config/reset?mode=clear` | Remove all devices (empty) |
 | GET | `/api/auth` | Get credentials |
 | GET | `/api/system` | System metrics (CPU, memory, uptime) |
 | GET | `/api/logs` | Recent access log entries |
@@ -201,7 +211,8 @@ See [configs/devices.yaml](configs/devices.yaml) for a full example with two dev
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-config` | `configs/devices.yaml` | Path to devices config file |
+| `-config` | `configs/devices.yaml` | Path to the seed devices config file |
+| `-state` | (next to `-config`) | Path to the persisted runtime state file (`state.yaml`) |
 | `-dashboard-port` | `8080` | Web dashboard HTTP port |
 | `-lan` | `false` | LAN mode — bind to physical interface for network accessibility |
 | `-interface` | (auto-detect) | Network interface for LAN mode |
@@ -212,9 +223,28 @@ See [configs/devices.yaml](configs/devices.yaml) for a full example with two dev
 
 Pre-built VM images are available for deploying the simulator as a standalone virtual appliance. The VM boots directly into LAN mode with a console status display.
 
+Pre-built binaries (Linux/macOS, amd64/arm64) and the AMD64 OVA are published to the GitHub Releases page on every `v*` tag via `.github/workflows/release.yml`. Build locally only if you need an ARM64 OVA or a custom image.
+
+### Verifying Releases
+
+Every release ships a `checksums.txt` (SHA256 of every artifact) and a `checksums.txt.minisig` ([minisign](https://jedisct1.github.io/minisign/) Ed25519 signature). The signing public key is committed at [`ova/keys/wlcsim.pub`](ova/keys/wlcsim.pub).
+
+```bash
+# Download artifact + checksums + signature from the release
+curl -LO https://github.com/<owner>/cisco-wlc-simulator/releases/download/vX.Y.Z/wlcsim-linux-amd64
+curl -LO https://github.com/<owner>/cisco-wlc-simulator/releases/download/vX.Y.Z/checksums.txt
+curl -LO https://github.com/<owner>/cisco-wlc-simulator/releases/download/vX.Y.Z/checksums.txt.minisig
+
+# Verify the signature, then verify the binary against the signed checksum
+minisign -V -p ova/keys/wlcsim.pub -m checksums.txt
+sha256sum -c checksums.txt --ignore-missing
+```
+
+Maintainer signing setup and key-rotation procedure live in [`ova/keys/README.md`](ova/keys/README.md).
+
 ### Building OVA Images
 
-Requires: Go 1.21+, [Packer](https://www.packer.io/), [QEMU](https://www.qemu.org/)
+Requires: Go 1.23+, [Packer](https://www.packer.io/), [QEMU](https://www.qemu.org/)
 
 ```bash
 brew install packer qemu    # macOS
@@ -228,9 +258,10 @@ Output: `build/wlcsim-arm64.ova` (~70MB), `build/wlcsim-amd64.ova`
 
 ### What's Inside
 
-- **Alpine Linux** minimal (virt kernel) — fast boot (~3s), small footprint
-- **Auto-start**: simulator launches in LAN mode on boot via OpenRC
-- **Console TUI**: VM console shows device list, IPs, dashboard URL, and log tail
+- **Alpine Linux 3.21** with `linux-lts` kernel — broad hypervisor support (QEMU/KVM, VMware Fusion ARM with NVMe + vmxnet3, VirtualBox)
+- **NVMe in initramfs**: root mountable on VMware Fusion ARM out of the box
+- **Auto-start**: simulator launches in LAN mode on boot via OpenRC (`/etc/init.d/wlcsim`)
+- **Console TUI**: VM console (`wlcsim-console`) shows device list, IPs, dashboard URL, recent activity; `r`/`s`/`q` for reboot/shutdown/shell
 - **Networking**: DHCP on eth0, bridged to host network
 - **Dashboard**: accessible at `http://<vm-ip>:8080`
 - **All protocols**: SSH (22), HTTPS (443), SNMP (161) on auto-assigned LAN IPs
