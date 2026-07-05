@@ -132,6 +132,9 @@ func (s *Simulator) AddDevice(dev device.Device) error {
 	}
 	s.mu.RUnlock()
 
+	// A site always has its locked default AP (named after the hostname).
+	dev.EnsureDefaultAP()
+
 	dev.StartTime = time.Now()
 	dev.InitConfig(s.tmplText)
 
@@ -210,6 +213,9 @@ func (s *Simulator) RemoveAP(deviceIP, apName string) error {
 		if d.IP == deviceIP {
 			for j := range d.APs {
 				if d.APs[j].Name == apName {
+					if d.APs[j].Default {
+						return fmt.Errorf("cannot remove %q: it is the site's default AP", apName)
+					}
 					d.APs = append(d.APs[:j], d.APs[j+1:]...)
 					d.InitConfig(s.tmplText)
 					s.saveLocked()

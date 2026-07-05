@@ -126,6 +126,8 @@ func applyDefaults(cfg *Config) {
 		if d.Version == "" {
 			d.Version = "17.12.1"
 		}
+		// A site always has its locked default AP (named after the hostname).
+		d.EnsureDefaultAP()
 		// Default client fields
 		for j := range d.APs {
 			for k := range d.APs[j].Clients {

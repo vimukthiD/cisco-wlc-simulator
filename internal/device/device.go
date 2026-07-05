@@ -33,6 +33,61 @@ type AP struct {
 	Model   string   `yaml:"model" json:"model"`
 	SSIDs   []string `yaml:"ssids" json:"ssids"`
 	Clients []Client `yaml:"clients" json:"clients"`
+	// Default marks the site's built-in AP. A site is itself an access point:
+	// this AP is created automatically, named after the site hostname, and
+	// cannot be removed or renamed (but is otherwise editable).
+	Default bool `yaml:"default,omitempty" json:"default,omitempty"`
+}
+
+// defaultAPModel is the model assigned to a site's auto-created default AP.
+const defaultAPModel = "C9120AXI-B"
+
+// EnsureDefaultAP guarantees the site has exactly one locked "default" AP whose
+// name mirrors the site hostname. It is idempotent, so it is safe to call on
+// every path that creates or loads a site (seed load, runtime add, import).
+func (d *Device) EnsureDefaultAP() {
+	if d.Hostname == "" {
+		return
+	}
+	// Already marked: keep it, just re-sync the derived fields.
+	for i := range d.APs {
+		if d.APs[i].Default {
+			fillDefaultAP(&d.APs[i], d.Hostname)
+			return
+		}
+	}
+	// Unmarked config (e.g. a pre-feature export) that already has an AP named
+	// after the site: adopt it as the default rather than duplicating.
+	for i := range d.APs {
+		if d.APs[i].Name == d.Hostname {
+			d.APs[i].Default = true
+			fillDefaultAP(&d.APs[i], d.Hostname)
+			return
+		}
+	}
+	// Otherwise create it, listed first as the site's primary AP.
+	ap := AP{Default: true}
+	fillDefaultAP(&ap, d.Hostname)
+	d.APs = append([]AP{ap}, d.APs...)
+}
+
+// fillDefaultAP sets the name and any missing derived fields on a default AP.
+func fillDefaultAP(ap *AP, hostname string) {
+	ap.Name = hostname
+	if ap.MAC == "" {
+		ap.MAC = defaultAPMAC(hostname)
+	}
+	if ap.Model == "" {
+		ap.Model = defaultAPModel
+	}
+}
+
+// defaultAPMAC derives a stable MAC for a site's default AP from its hostname.
+func defaultAPMAC(hostname string) string {
+	h := fnv.New32a()
+	h.Write([]byte(hostname))
+	sum := h.Sum32()
+	return fmt.Sprintf("00:3a:7d:%02x:%02x:%02x", byte(sum>>16), byte(sum>>8), byte(sum))
 }
 
 // Client represents a wireless client connected to an AP.

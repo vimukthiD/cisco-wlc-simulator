@@ -771,15 +771,16 @@ function renderDetail() {
       <thead><tr><th>Name</th><th>MAC</th><th>Model</th><th>Clients</th><th>SSIDs</th><th></th></tr></thead>
       <tbody>${d.aps.map(ap => {
         const ssids = (ap.ssids || []);
+        const isDefault = ap.default === true;
         return `<tr>
-          <td><strong>${ap.name}</strong></td>
+          <td><strong>${ap.name}</strong>${isDefault ? ' <span class="badge badge-cyan" title="Default AP for this site — cannot be removed or renamed">DEFAULT</span>' : ''}</td>
           <td><code>${ap.mac}</code></td>
           <td>${ap.model || 'C9120AXI-B'}</td>
           <td>${(ap.clients || []).length}</td>
           <td>${ssids.map(s => `<span class="badge badge-blue">${s}</span>`).join(' ') || '<span style="color:var(--text-dim)">none</span>'}</td>
           <td>
             <button class="add-btn" style="font-size:11px;padding:2px 8px" onclick='showEditAP("${d.ip}","${ap.name}",${JSON.stringify(ssids)})'>Edit SSIDs</button>
-            <button class="del-btn" style="font-size:11px" onclick="event.stopPropagation();deleteAP('${d.ip}','${ap.name}')" title="Remove AP">x</button>
+            ${isDefault ? '' : `<button class="del-btn" style="font-size:11px" onclick="event.stopPropagation();deleteAP('${d.ip}','${ap.name}')" title="Remove AP">x</button>`}
           </td>
         </tr>`;
       }).join('')}</tbody></table>`);

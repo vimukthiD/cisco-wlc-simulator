@@ -12,9 +12,10 @@ devices:
     serial: FCW2345L0AB
     version: "17.12.1"
     aps:
-      - name: AP-Floor1-Lobby
+      - name: WLC-SITE-A
         mac: "00:3a:7d:12:01:00"
         model: C9120AXI-B
+        default: true
         clients:
           - mac: "aa:bb:cc:11:22:01"
             ipv4: "10.10.50.101"
@@ -110,9 +111,10 @@ devices:
     serial: FCW2345L0CD
     version: "17.12.1"
     aps:
-      - name: AP-Warehouse-01
+      - name: WLC-SITE-B
         mac: "00:3a:7d:13:01:00"
         model: C9124AXI-B
+        default: true
         clients:
           - mac: "dd:ee:ff:01:01:01"
             ipv4: "10.20.10.50"
