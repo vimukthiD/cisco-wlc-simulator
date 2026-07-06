@@ -15,6 +15,7 @@ import (
 	"github.com/vimukthiD/cisco-wlc-simulator/internal/accesslog"
 	"github.com/vimukthiD/cisco-wlc-simulator/internal/device"
 	"github.com/vimukthiD/cisco-wlc-simulator/internal/simulator"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/updater"
 )
 
 var startTime = time.Now()
@@ -72,7 +73,7 @@ func getProcessCPUTime() time.Duration {
 var staticFS embed.FS
 
 // Serve starts the dashboard HTTP server.
-func Serve(port int, sim *simulator.Simulator, logs *accesslog.Store) error {
+func Serve(port int, sim *simulator.Simulator, logs *accesslog.Store, upd *updater.Updater) error {
 	mux := http.NewServeMux()
 	cpu := newCPUSampler()
 
@@ -311,6 +312,56 @@ func Serve(port int, sim *simulator.Simulator, logs *accesslog.Store) error {
 			return
 		}
 		writeJSON(w, map[string]any{"status": "reset", "mode": mode, "devices": len(sim.Devices())})
+	})
+
+	// System update: current/available version and in-place update trigger.
+	// These are inert off-appliance (status reports appliance:false; check/apply
+	// return 403).
+	mux.HandleFunc("/api/update/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" && r.Method != "" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		writeJSON(w, upd.Status())
+	})
+
+	mux.HandleFunc("/api/update/check", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !upd.IsAppliance() {
+			http.Error(w, `{"error":"`+updater.ErrNotAppliance.Error()+`"}`, http.StatusForbidden)
+			return
+		}
+		if _, err := upd.CheckLatest(r.Context()); err != nil {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, upd.Status())
+	})
+
+	mux.HandleFunc("/api/update/apply", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		err := upd.Apply(r.Context())
+		switch {
+		case err == nil:
+			w.WriteHeader(http.StatusAccepted)
+			writeJSON(w, map[string]string{"status": "started"})
+		case err == updater.ErrNotAppliance:
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusForbidden)
+		case err == updater.ErrAlreadyInProgress:
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusConflict)
+		case err == updater.ErrNoUpdateAvailable, err == updater.ErrUnsupportedArch:
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		case err == updater.ErrInsufficientSpace:
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInsufficientStorage)
+		default:
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadGateway)
+		}
 	})
 
 	mux.HandleFunc("/api/logs", func(w http.ResponseWriter, r *http.Request) {

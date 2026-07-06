@@ -265,6 +265,7 @@
   .log-type.ssh { color: var(--cyan); }
   .log-type.snmp { color: var(--orange); }
   .log-type.tftp { color: var(--green); }
+  .log-type.system { color: var(--purple, #b48ead); }
   .log-device { color: var(--yellow); min-width: 100px; }
   .log-detail { color: var(--text); flex: 1; }
   .log-status { min-width: 35px; text-align: right; }
@@ -481,6 +482,18 @@
         <span class="sys-metric-value" id="sysSys">--</span>
       </div>
       <div class="sys-bar"><div class="sys-bar-fill" id="sysSysBar" style="width:0%;background:var(--accent)"></div></div>
+    </div>
+  </div>
+
+  <div class="card" id="updateCard" style="margin-bottom:16px; display:none;">
+    <div class="card-header">
+      <h2>System Update</h2>
+      <span class="badge badge-blue" id="updVersion" title="Running version">--</span>
+    </div>
+    <div class="card-body" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <span id="updStatusText" style="flex:1; min-width:220px; font-size:13px;">Checking…</span>
+      <button class="hdr-btn" id="updCheckBtn" onclick="checkUpdate()" style="display:none">Check for updates</button>
+      <button class="hdr-btn" id="updApplyBtn" onclick="applyUpdate()" style="display:none">&#x2193; Update Now</button>
     </div>
   </div>
 
@@ -1409,10 +1422,164 @@ async function postReset(mode) {
   }
 }
 
+// --- System update ---
+
+let updateStatus = null;
+
+async function loadUpdateStatus() {
+  try {
+    const res = await fetch('/api/update/status');
+    updateStatus = await res.json();
+    renderUpdate();
+  } catch (e) {}
+}
+
+function renderUpdate() {
+  const s = updateStatus;
+  if (!s) return;
+  document.getElementById('updateCard').style.display = 'block';
+  document.getElementById('updVersion').textContent = s.current_version || 'dev';
+  const text = document.getElementById('updStatusText');
+  const checkBtn = document.getElementById('updCheckBtn');
+  const applyBtn = document.getElementById('updApplyBtn');
+
+  // Banner for the outcome of a previous update (success or auto-rollback).
+  let banner = '';
+  if (s.last_result) {
+    const r = s.last_result;
+    const color = r.phase === 'done' ? 'var(--green)' : 'var(--orange)';
+    banner = `<div style="color:${color}; margin-bottom:6px; font-weight:600;">${escapeHtml(r.message)}</div>`;
+  }
+
+  if (!s.appliance) {
+    checkBtn.style.display = 'none';
+    applyBtn.style.display = 'none';
+    text.innerHTML = banner + '<span style="color:var(--text-dim)">Running locally — updates are managed through your own build, not this dashboard.</span>';
+    return;
+  }
+
+  checkBtn.style.display = '';
+  checkBtn.disabled = s.in_progress;
+
+  let status;
+  if (s.in_progress) {
+    status = '<span style="color:var(--accent)">Update in progress — see the activity log below.</span>';
+    applyBtn.style.display = 'none';
+  } else if (s.update_available) {
+    const link = s.release_url ? ` (<a href="${s.release_url}" target="_blank" rel="noopener">release notes</a>)` : '';
+    status = `<span style="color:var(--green)">Update available: <strong>${escapeHtml(s.latest_version)}</strong>${link}</span>`;
+    applyBtn.style.display = '';
+    applyBtn.disabled = false;
+  } else if (s.latest_version) {
+    status = `<span style="color:var(--text-dim)">Up to date (latest release is ${escapeHtml(s.latest_version)}).</span>`;
+    applyBtn.style.display = 'none';
+  } else if (s.last_error) {
+    status = `<span style="color:var(--orange)">Check failed: ${escapeHtml(s.last_error)}</span>`;
+    applyBtn.style.display = 'none';
+  } else {
+    status = '<span style="color:var(--text-dim)">Click “Check for updates” to see if a newer release is available.</span>';
+    applyBtn.style.display = 'none';
+  }
+  text.innerHTML = banner + status;
+}
+
+async function checkUpdate() {
+  const btn = document.getElementById('updCheckBtn');
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  try {
+    const res = await fetch('/api/update/check', { method: 'POST' });
+    if (!res.ok) {
+      const b = await res.text();
+      try { alert('Check failed: ' + JSON.parse(b).error); } catch { alert('Check failed: ' + b); }
+      await loadUpdateStatus();
+      return;
+    }
+    updateStatus = await res.json();
+    renderUpdate();
+  } catch (e) {
+    alert('Check failed: ' + e.message);
+  } finally {
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
+}
+
+async function applyUpdate() {
+  const s = updateStatus;
+  if (!s || !s.update_available) return;
+  const startVersion = s.current_version;
+  if (!confirm(`Update to ${s.latest_version}?\n\nThe simulator will download the new release, verify it, install it and restart. All simulated devices and this dashboard will be briefly unreachable (~30–60s). If the new version fails to start, it is automatically rolled back.`)) return;
+  try {
+    const res = await fetch('/api/update/apply', { method: 'POST' });
+    if (!res.ok) {
+      const b = await res.text();
+      try { alert('Update failed: ' + JSON.parse(b).error); } catch { alert('Update failed: ' + b); }
+      return;
+    }
+    document.getElementById('updApplyBtn').disabled = true;
+    document.getElementById('updCheckBtn').disabled = true;
+    document.getElementById('updStatusText').innerHTML =
+      '<span style="color:var(--accent)">Downloading and installing… the dashboard will restart and this page will reload automatically.</span>';
+    waitForRestart(startVersion);
+  } catch (e) {
+    alert('Update failed: ' + e.message);
+  }
+}
+
+// Poll the update status across the restart. Reloads once the (possibly new)
+// process is serving again with a changed version or a recorded result; stops
+// early if the update failed before restarting (e.g. checksum mismatch).
+function waitForRestart(startVersion) {
+  let sawInProgress = false;
+  let settledElapsed = 0;   // seconds spent settled but without a verdict yet
+  let elapsed = 0;
+  const graceSecs = 60;     // allow the helper's post-restart health check + result write
+  const iv = setInterval(async () => {
+    elapsed += 3;
+    let s = null;
+    try {
+      const res = await fetch('/api/update/status', { cache: 'no-store' });
+      if (res.ok) s = await res.json();
+    } catch (e) { /* service restarting — connection refused */ }
+    if (s) {
+      if (s.in_progress) {
+        sawInProgress = true;
+        settledElapsed = 0;
+      } else if (sawInProgress) {
+        if (s.current_version !== startVersion || s.last_result) {
+          clearInterval(iv);
+          location.reload(); // updated or rolled back — reflect the new state
+          return;
+        }
+        // Settled with no verdict yet (e.g. a rollback whose result file is
+        // still being written). Wait out a grace window before giving up.
+        settledElapsed += 3;
+        if (settledElapsed >= graceSecs) {
+          clearInterval(iv);
+          updateStatus = s;
+          renderUpdate();
+          alert('Update did not complete: ' + (s.last_error || 'see the activity log for details.'));
+          return;
+        }
+      }
+    }
+    if (elapsed > 240) { clearInterval(iv); location.reload(); }
+  }, 3000);
+}
+
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 loadDevices();
 loadLogs();
 connectSSE();
 pollSystem();
+loadUpdateStatus();
 setInterval(pollSystem, 3000);
 </script>
 </body>

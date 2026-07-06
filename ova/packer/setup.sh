@@ -42,7 +42,9 @@ apk del --no-cache linux-virt 2>/dev/null || true
 echo "=== Installing packages ==="
 # haveged seeds the kernel entropy pool in software — without it, crypto/rand
 # blocks for ~60s at startup on ARM64 VMs while RESTCONF/SSH generate keys.
-apk add --no-cache iproute2 iputils haveged
+# ca-certificates provides /etc/ssl/certs so the in-place system updater can
+# verify TLS to GitHub (api.github.com / release asset downloads).
+apk add --no-cache iproute2 iputils haveged ca-certificates
 rc-update add haveged boot 2>/dev/null || true
 
 # Disable host sshd — it would bind 0.0.0.0:22 and hijack SSH traffic to the

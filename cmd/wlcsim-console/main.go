@@ -52,6 +52,14 @@ type systemInfo struct {
 	MemHeapAlloc uint64  `json:"mem_heap_alloc"`
 }
 
+type updateInfo struct {
+	Appliance       bool   `json:"appliance"`
+	CurrentVersion  string `json:"current_version"`
+	LatestVersion   string `json:"latest_version"`
+	UpdateAvailable bool   `json:"update_available"`
+	InProgress      bool   `json:"in_progress"`
+}
+
 type logEntry struct {
 	Timestamp  string `json:"timestamp"`
 	DeviceHost string `json:"device_host"`
@@ -112,6 +120,17 @@ func render() {
 	sb.WriteString(fmt.Sprintf("  %sNetwork%s Interface: %s%s%s  VM IP: %s%s%s\n",
 		bold, reset, cyan, iface, reset, green+bold, bareIP, reset))
 	sb.WriteString(fmt.Sprintf("  %sDashboard%s %shttp://%s:8080%s\n", bold, reset, cyan, bareIP, reset))
+
+	// Version / update banner (appliance only)
+	if upd := fetchUpdateStatus(); upd != nil && upd.Appliance {
+		line := fmt.Sprintf("  %sVersion%s   %s%s%s", bold, reset, cyan, upd.CurrentVersion, reset)
+		if upd.InProgress {
+			line += fmt.Sprintf("   %s● updating — services will restart shortly%s", yellow, reset)
+		} else if upd.UpdateAvailable {
+			line += fmt.Sprintf("   %s● %s available%s %s(update from dashboard)%s", green, upd.LatestVersion, reset, dim, reset)
+		}
+		sb.WriteString(line + "\n")
+	}
 	sb.WriteString("\n")
 
 	// Devices
@@ -255,6 +274,14 @@ func fetchSystem() *systemInfo {
 		return nil
 	}
 	return &sys
+}
+
+func fetchUpdateStatus() *updateInfo {
+	var u updateInfo
+	if err := fetchJSON("/api/update/status", &u); err != nil {
+		return nil
+	}
+	return &u
 }
 
 func fetchLogs() []logEntry {

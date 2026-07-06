@@ -38,6 +38,7 @@ Requires sudo for privileged ports (22, 161, 443, 69) and IP alias management.
 - `internal/dashboard/` — web dashboard (embedded HTML/JS/CSS), REST API, SSE, CPU sampler
 - `internal/network/` — IP alias management, interface detection, ARP probing
 - `internal/accesslog/` — shared access log store with pub/sub
+- `internal/updater/` — appliance-only in-place system update (GitHub release check, download+verify, detached self-exec restart with rollback)
 - `configs/devices.yaml` — sample device config (2 WLCs, 4 APs, 7 clients)
 - `configs/running-config.tmpl` — IOS-XE config template (Go text/template)
 - `ova/` — VM appliance build system (Packer, Alpine rootfs, OVA packaging)
@@ -57,6 +58,7 @@ Requires sudo for privileged ports (22, 161, 443, 69) and IP alias management.
 - **Persistence**: every simulator mutation writes the full state to a YAML state file (atomic temp+rename) in the same `devices.yaml` format. On startup, a present state file is loaded in preference to the seed config; its **absence** means "use the seed." `state.yaml` lives next to `-config` by default (override with `-state`).
 - **State file invariant**: the state file always mirrors the running state. Factory Reset re-applies the seed and *deletes* the state file (restart → seed); Clear All empties the devices and *writes* an empty state; Import replaces everything and writes the state. `internal/config` owns both directions of the YAML↔`Config` mapping (`Load`/`ParseYAML` in, `Marshal`/`Save` out).
 - **Graceful shutdown**: each protocol `Serve` takes a `stop <-chan struct{}`; the simulator holds a per-device `deviceHandle` (stop channel + WaitGroup) so it can stop a device's three servers and reuse its `IP:port` immediately (required for reset/import; also fixes `RemoveDevice`'s old socket leak).
+- **In-place system update** (`internal/updater`, appliance-only): the build version is baked in via `-X main.version` (declared as `var version` in `cmd/wlcsim/main.go`). `updater.New` gates the feature on the appliance (presence of `/etc/init.d/wlcsim`, or `WLCSIM_APPLIANCE=1` for local testing). The dashboard exposes `GET /api/update/status`, `POST /api/update/check` (queries GitHub `releases/latest`), and `POST /api/update/apply`. Apply downloads `wlcsim-linux-<arch>` + `wlcsim-console-linux-<arch>` + `checksums.txt` to `/var/lib/wlcsim/update`, SHA-256-verifies them (nothing under `/usr/local/bin` is touched until verified), then hands off to a **detached helper** — the *current, pre-swap* binary re-executed via `/proc/self/exe -update-helper` so trusted old code performs the swap. The helper: confirms the old process actually stopped, backs up live binaries to `.bak`, installs the new ones, `rc-service wlcsim restart`, health-checks `:8080/api/system`, and **auto-rolls-back to `.bak` on failure** — reporting an outcome grounded in a real post-recovery health check (never optimistic). Progress streams to the live log panel as `accesslog.Entry{Type:"system"}`; the outcome is persisted to `/var/lib/wlcsim/update/last-result.json` and surfaced in `Status` so the post-restart page shows "Updated"/"Rolled back". Helper output goes to `/var/log/wlcsim-update.log`. Only benefits appliances built from the release that ships the updater onward.
 
 ## Testing
 
@@ -91,6 +93,11 @@ curl http://localhost:8080/api/config/export -o backup.yaml          # download 
 curl -X POST http://localhost:8080/api/config/import --data-binary @backup.yaml   # replace all state
 curl -X POST 'http://localhost:8080/api/config/reset?mode=factory'   # restore seed devices.yaml
 curl -X POST 'http://localhost:8080/api/config/reset?mode=clear'     # remove all devices
+
+# System update (appliance-only; run local dashboard with WLCSIM_APPLIANCE=1 to exercise)
+curl http://localhost:8080/api/update/status                         # version + cached availability (no network)
+curl -X POST http://localhost:8080/api/update/check                  # query GitHub releases/latest
+curl -X POST http://localhost:8080/api/update/apply                  # download+verify+install+restart (appliance only)
 ```
 
 ## OVA Build
@@ -136,3 +143,5 @@ The OVA build uses Packer with QEMU to create an Alpine Linux VM appliance:
 - Config template uses Go `text/template` syntax with `.Hostname`, `.IP`, `.Version`, `.Serial`, `.VLANs`, `.WLANs`, `.APs`
 - Packer on macOS: QEMU doesn't support GTK display; use `headless = true` (VNC) or `display = "cocoa"`
 - Alpine `arping` is in the `iputils` package, not `arping`
+- **System update needs outbound internet**: the appliance's update check/apply reaches `api.github.com` and GitHub release-asset hosts over HTTPS. `setup.sh` installs `ca-certificates` so Go's static binary can verify TLS; without egress the check fails gracefully (surfaced as an error, service untouched). `release.yml` publishes `wlcsim-console-linux-{amd64,arm64}` alongside the main binaries so both can be updated in place.
+- **Update version wiring**: `-X main.version` targets `var version` in `cmd/wlcsim/main.go` (previously the ldflag was inert — no such var existed). Tagged CI builds bake in the tag (`v0.0.9`); local `make build` bakes in `git describe`; a bare `go build` leaves it `"dev"` (always sees an update available).

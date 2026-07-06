@@ -107,11 +107,13 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release
-          cp artifacts/binaries/wlcsim-linux-amd64   release/wlcsim-linux-amd64
-          cp artifacts/binaries/wlcsim-linux-arm64   release/wlcsim-linux-arm64
-          cp artifacts/binaries/wlcsim-darwin-amd64  release/wlcsim-darwin-amd64
-          cp artifacts/binaries/wlcsim-darwin-arm64  release/wlcsim-darwin-arm64
-          cp artifacts/ova-amd64/wlcsim-amd64.ova    release/wlcsim-amd64.ova
+          cp artifacts/binaries/wlcsim-linux-amd64          release/wlcsim-linux-amd64
+          cp artifacts/binaries/wlcsim-linux-arm64          release/wlcsim-linux-arm64
+          cp artifacts/binaries/wlcsim-console-linux-amd64  release/wlcsim-console-linux-amd64
+          cp artifacts/binaries/wlcsim-console-linux-arm64  release/wlcsim-console-linux-arm64
+          cp artifacts/binaries/wlcsim-darwin-amd64         release/wlcsim-darwin-amd64
+          cp artifacts/binaries/wlcsim-darwin-arm64         release/wlcsim-darwin-arm64
+          cp artifacts/ova-amd64/wlcsim-amd64.ova           release/wlcsim-amd64.ova
           chmod +x release/wlcsim-*
           cd release && sha256sum * > checksums.txt
 

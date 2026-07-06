@@ -14,7 +14,13 @@ import (
 	"github.com/vimukthiD/cisco-wlc-simulator/internal/dashboard"
 	"github.com/vimukthiD/cisco-wlc-simulator/internal/network"
 	"github.com/vimukthiD/cisco-wlc-simulator/internal/simulator"
+	"github.com/vimukthiD/cisco-wlc-simulator/internal/updater"
 )
+
+// version is the build version, injected at link time via
+// -ldflags "-X main.version=<tag>" (see Makefile / release.yml). It defaults to
+// "dev" for un-tagged local builds.
+var version = "dev"
 
 func main() {
 	configPath := flag.String("config", "configs/devices.yaml", "path to seed devices config file")
@@ -24,7 +30,16 @@ func main() {
 	lanIface := flag.String("interface", "", "network interface for LAN mode (auto-detect if empty)")
 	setupOnly := flag.Bool("setup-ips", false, "only add virtual IP aliases, then exit")
 	teardownOnly := flag.Bool("teardown-ips", false, "only remove virtual IP aliases, then exit")
+	updateHelper := flag.String("update-helper", "", "internal: run the detached update install/rollback helper with the given config path")
 	flag.Parse()
+
+	// Detached self-update helper mode: install the staged binaries, restart the
+	// service, health-check, and roll back on failure, then exit. Runs the
+	// pre-swap (known-good) binary via /proc/self/exe; never returns.
+	if *updateHelper != "" {
+		updater.RunHelper(*updateHelper)
+		return
+	}
 
 	// The state file lives next to the seed config unless overridden. Its
 	// presence means "restore the saved runtime state"; its absence means
@@ -109,9 +124,12 @@ func main() {
 	})
 	sim.StartAll()
 
+	// System updater (in-place binary update; active only on the OVA appliance).
+	upd := updater.New(version, logs, updater.Options{DashboardPort: *dashPort})
+
 	// Start web dashboard
 	go func() {
-		if err := dashboard.Serve(*dashPort, sim, logs); err != nil {
+		if err := dashboard.Serve(*dashPort, sim, logs, upd); err != nil {
 			log.Printf("Dashboard server error: %v", err)
 		}
 	}()
@@ -120,7 +138,7 @@ func main() {
 	if *lanMode {
 		mode = "LAN (" + lanIfaceName + ")"
 	}
-	log.Printf("Simulator running with %d device(s) [%s]. Press Ctrl+C to stop.", len(cfg.Devices), mode)
+	log.Printf("wlcsim %s — simulator running with %d device(s) [%s]. Press Ctrl+C to stop.", version, len(cfg.Devices), mode)
 	log.Printf("  Dashboard: http://localhost:%d", *dashPort)
 	log.Printf("  State file: %s", *statePath)
 	for _, dev := range cfg.Devices {
