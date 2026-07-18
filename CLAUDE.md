@@ -100,6 +100,15 @@ curl -X POST http://localhost:8080/api/update/check                  # query Git
 curl -X POST http://localhost:8080/api/update/apply                  # download+verify+install+restart (appliance only)
 ```
 
+### Testing the updater
+
+- **Unit tests** (pure logic + network/verify parsing, no real GitHub): `go test ./internal/updater/`. Covers version comparison, `releases/latest` decoding, checksum parsing, and download+SHA-256 verification via `httptest`.
+- **End-to-end against a mock release** (no public release needed): the `updatetest` build tag enables a `WLCSIM_UPDATE_API_BASE` override. It is **opt-in and never set by default or release targets**, so production binaries/OVAs never contain it.
+  1. Build a test binary/OVA with the hook: `make build GO_TAGS=updatetest` (or `make ova-arm64 GO_TAGS=updatetest`).
+  2. Put the "new" `wlcsim-linux-<arch>` + `wlcsim-console-linux-<arch>` in a dir and serve them: `go run ./hack/mockrelease -dir ./newrelease -tag v9.9.9 -addr :8099` (auto-generates `checksums.txt`).
+  3. Give the appliance's `wlcsim` service `WLCSIM_UPDATE_API_BASE=http://<host>:8099` (e.g. add `export ...` to `/etc/init.d/wlcsim`), then Check → Update. Drop a deliberately-broken `wlcsim-linux-<arch>` (one that won't serve `:8080`) in the dir to exercise the auto-rollback path.
+- **Isolated helper file-op dry-run**: stub `rc-service` on `PATH`, hand-write a `helper.json`, run `wlcsim -update-helper /path/helper.json` — validates the backup/swap/rollback file moves without GitHub or a full OVA.
+
 ## OVA Build
 
 The OVA build uses Packer with QEMU to create an Alpine Linux VM appliance:

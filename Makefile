@@ -3,6 +3,13 @@ VERSION      := $(shell git describe --tags --always --dirty 2>/dev/null || echo
 BUILD_DIR    := build
 LDFLAGS      := -s -w -X main.version=$(VERSION)
 
+# Optional Go build tags. Empty for all production/release builds. Set
+# GO_TAGS=updatetest to compile the updater's mock-server test hook
+# (WLCSIM_UPDATE_API_BASE). This is never set by the default targets or the
+# release workflow, so it cannot end up in production binaries or OVAs.
+GO_TAGS   ?=
+TAGS_FLAG := $(if $(GO_TAGS),-tags $(GO_TAGS),)
+
 # Packer variables (override for CI, e.g. ACCELERATOR=kvm)
 ACCELERATOR       ?=
 EFI_FIRMWARE_CODE ?=
@@ -24,8 +31,8 @@ endif
 
 .PHONY: build
 build:
-	go build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/wlcsim ./cmd/wlcsim
-	go build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/wlcsim-console ./cmd/wlcsim-console
+	go build $(TAGS_FLAG) -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/wlcsim ./cmd/wlcsim
+	go build $(TAGS_FLAG) -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/wlcsim-console ./cmd/wlcsim-console
 
 .PHONY: run
 run: build
@@ -42,17 +49,17 @@ run-lan: build
 .PHONY: build-linux-amd64
 build-linux-amd64:
 	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" \
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(TAGS_FLAG) -ldflags="$(LDFLAGS)" \
 		-o $(BUILD_DIR)/wlcsim-linux-amd64 ./cmd/wlcsim
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" \
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(TAGS_FLAG) -ldflags="$(LDFLAGS)" \
 		-o $(BUILD_DIR)/wlcsim-console-linux-amd64 ./cmd/wlcsim-console
 
 .PHONY: build-linux-arm64
 build-linux-arm64:
 	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" \
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build $(TAGS_FLAG) -ldflags="$(LDFLAGS)" \
 		-o $(BUILD_DIR)/wlcsim-linux-arm64 ./cmd/wlcsim
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" \
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build $(TAGS_FLAG) -ldflags="$(LDFLAGS)" \
 		-o $(BUILD_DIR)/wlcsim-console-linux-arm64 ./cmd/wlcsim-console
 
 .PHONY: build-linux-all

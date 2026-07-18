@@ -174,6 +174,9 @@ Changes made at runtime (via the dashboard or REST API) are saved to a **state f
 | GET | `/api/system` | System metrics (CPU, memory, uptime) |
 | GET | `/api/logs` | Recent access log entries |
 | GET | `/api/logs/stream` | SSE stream of new log entries |
+| GET | `/api/update/status` | Running version + cached update availability |
+| POST | `/api/update/check` | Check GitHub for a newer release (appliance only) |
+| POST | `/api/update/apply` | Download, verify, install and restart (appliance only) |
 
 ## Configuration
 
@@ -265,6 +268,7 @@ Output: `build/wlcsim-arm64.ova` (~70MB), `build/wlcsim-amd64.ova`
 - **Networking**: DHCP on eth0, bridged to host network
 - **Dashboard**: accessible at `http://<vm-ip>:8080`
 - **All protocols**: SSH (22), HTTPS (443), SNMP (161) on auto-assigned LAN IPs
+- **Self-update**: check GitHub for a newer release and update in place from the dashboard, with automatic rollback if the new build fails to start (`ca-certificates` bundled for TLS)
 
 ### Deploying
 
@@ -273,6 +277,77 @@ Output: `build/wlcsim-arm64.ova` (~70MB), `build/wlcsim-amd64.ova`
 3. Boot the VM
 4. The console displays assigned IPs and dashboard URL
 5. Access devices from any machine on the LAN
+
+### System Update (in-place)
+
+The appliance updates itself in place — no need to re-import a new OVA. From the dashboard's **System Update** card:
+
+1. It shows the running version with a **Check for updates** button.
+2. Check queries the latest GitHub release (`releases/latest`).
+3. If a newer stable release exists, **Update Now** downloads the new `wlcsim` + `wlcsim-console` binaries, verifies them against the release's `checksums.txt` (SHA-256), swaps them into `/usr/local/bin` (backing the old ones up to `.bak`), and restarts the service.
+4. A detached helper — the *pre-swap* binary re-executed via `/proc/self/exe`, so trusted old code performs the cut-over — health-checks the restart and **automatically rolls back** to the `.bak` binaries if the new version doesn't come up. The outcome ("Updated to …" / "Rolled back to …") is shown after the page reloads. Details are logged to `/var/log/wlcsim-update.log`.
+
+The feature is **appliance-only** (gated on the presence of `/etc/init.d/wlcsim`); on a native `./wlcsim` run the card shows the version but no update controls. It needs outbound HTTPS to `api.github.com` and GitHub's release CDN. Only releases published *after* an appliance was built are offered — an appliance can only self-update if its own binary already contains the updater.
+
+### Testing the Update Flow on a VM
+
+The download → verify → swap → restart → rollback path only runs on a real Linux/OpenRC appliance. Two ways to exercise it end to end:
+
+#### Option A — local mock release server (self-contained, tests rollback)
+
+No public release needed. A build tag (`updatetest`) enables a `WLCSIM_UPDATE_API_BASE` override that points the updater at a local mock server. **This tag is never set by the default or release targets, so it can't reach a production build.**
+
+1. **Build a test OVA** with the mock hook (match your host arch):
+
+   ```bash
+   make ova-arm64 GO_TAGS=updatetest      # or: make ova-amd64 GO_TAGS=updatetest
+   ```
+
+2. **Serve a "new release"** from your host — build newer-versioned binaries and run the mock (auto-generates `checksums.txt`):
+
+   ```bash
+   mkdir newrelease
+   GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X main.version=v9.9.9" -o newrelease/wlcsim-linux-arm64 ./cmd/wlcsim
+   GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-X main.version=v9.9.9" -o newrelease/wlcsim-console-linux-arm64 ./cmd/wlcsim-console
+   go run ./hack/mockrelease -dir ./newrelease -tag v9.9.9 -addr :8099
+   ```
+
+   (Use `-linux-amd64` names if your OVA is amd64.)
+
+3. **Boot the test OVA** (bridged networking) and point its updater at your host. From the VM console press `q` for a shell:
+
+   ```bash
+   # add near the top of the service script so the daemon inherits it
+   sed -i '2i export WLCSIM_UPDATE_API_BASE=http://<your-host-ip>:8099' /etc/init.d/wlcsim
+   rc-service wlcsim restart
+   ```
+
+4. **Update**: open `http://<vm-ip>:8080` → **System Update** card → **Check for updates** (shows `v9.9.9`) → **Update Now**. Watch the log panel; the page reloads on the new version.
+
+5. **Test rollback**: serve a "new" binary that never starts, under a higher tag, then Update again — the appliance installs it, the health check fails, and it auto-rolls-back:
+
+   ```bash
+   printf '#!/bin/sh\nexec sleep infinity\n' > newrelease/wlcsim-linux-arm64
+   chmod +x newrelease/wlcsim-linux-arm64
+   go run ./hack/mockrelease -dir ./newrelease -tag v9.9.10 -addr :8099
+   ```
+
+   The card shows "Rolled back to …"; `/var/log/wlcsim-update.log` on the VM has the full sequence.
+
+#### Option B — real GitHub releases (public, fully end-to-end)
+
+1. Tag and push two releases (CI builds binaries, console binaries, checksums, and the AMD64 OVA on each `v*` tag):
+
+   ```bash
+   git tag v0.0.10 && git push origin v0.0.10   # deploy this OVA
+   git tag v0.0.11 && git push origin v0.0.11   # the target to update to
+   ```
+
+2. Deploy the `v0.0.10` OVA (amd64 host for the published OVA; for arm64, `make ova-arm64` at the `v0.0.10` commit — the arm64 *binaries* are still published for it to fetch).
+3. On the VM dashboard: **Check for updates** → `v0.0.11` → **Update Now** → confirm the version becomes `v0.0.11` and devices return.
+4. Delete the throwaway tags/releases afterward. Note: `releases/latest` ignores pre-releases, so test releases must be full releases.
+
+> For a quick logic check without a VM: `go test ./internal/updater/`.
 
 ### Makefile Targets
 
@@ -285,6 +360,9 @@ make ova-amd64          Build AMD64 OVA
 make ova-arm64          Build ARM64 OVA
 make ova-all            Build both OVAs
 make clean              Remove build artifacts
+
+# Append GO_TAGS=updatetest to any build/ova target to enable the updater's
+# mock-server test hook (WLCSIM_UPDATE_API_BASE). Never used by release builds.
 ```
 
 ## Architecture
@@ -308,6 +386,8 @@ internal/
   dashboard/
     server.go                    — Dashboard HTTP server, REST API, SSE, CPU sampler
     static/index.html            — Embedded SPA dashboard (HTML/CSS/JS)
+  updater/                       — Appliance-only in-place system update (GitHub check,
+                                   download+verify, detached self-exec restart w/ rollback)
   network/
     setup.go                     — IP alias management (loopback + physical interface)
     detect.go                    — Primary interface detection (macOS/Linux)

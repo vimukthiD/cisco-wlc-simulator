@@ -17,6 +17,13 @@ import (
 // runaway/hostile response. The real binaries are ~15 MB.
 const maxDownloadBytes = 128 << 20 // 128 MiB
 
+// apiBaseURL is the GitHub API root. Production builds always use the real
+// GitHub host; it is only overridable in test builds (the `updatetest` build
+// tag enables reading WLCSIM_UPDATE_API_BASE — see apibase_testhook.go) and by
+// in-package tests. Release/default build targets never set that tag, so a
+// released binary can never be pointed at a different host.
+var apiBaseURL = "https://api.github.com"
+
 // Asset is a single downloadable file attached to a GitHub release.
 type Asset struct {
 	Name               string `json:"name"`
@@ -47,7 +54,7 @@ func (r *Release) asset(name string) (Asset, bool) {
 // endpoint already excludes drafts and pre-releases, so a successful result is
 // always a stable release.
 func fetchLatestRelease(ctx context.Context, repo string, hc *http.Client) (*Release, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
+	url := fmt.Sprintf("%s/repos/%s/releases/latest", apiBaseURL, repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
